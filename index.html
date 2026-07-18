@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="ta">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>கடை பில் - Kadai Bill</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+Thambi+2:wght@500;600;700;800&family=Noto+Sans+Tamil:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --board:#1e3d2e;
+    --board-light:#28503c;
+    --board-lighter:#325f48;
+    --chalk:#f5f1e3;
+    --chalk-dim:#cdd8ce;
+    --gold:#f2b03b;
+    --gold-dim:#d99a2b;
+    --brick:#c1440e;
+    --brick-dim:#a63a0c;
+    --danger:#e05252;
+    --ok:#6fbf73;
+    --radius:18px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;}
+  body{
+    background:var(--board);
+    background-image:
+      radial-gradient(circle at 20% 10%, rgba(255,255,255,0.03), transparent 40%),
+      radial-gradient(circle at 80% 80%, rgba(255,255,255,0.03), transparent 45%);
+    color:var(--chalk);
+    font-family:'Noto Sans Tamil','Noto Sans',sans-serif;
+    -webkit-tap-highlight-color:transparent;
+    user-select:none;
+    min-height:100vh;
+  }
+  .app{max-width:520px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;padding-bottom:110px;}
+
+  /* Header */
+  header{
+    position:sticky;top:0;z-index:20;
+    background:var(--board);
+    border-bottom:2px dashed rgba(245,241,227,0.25);
+    padding:14px 16px 12px;
+  }
+  .shop-row{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .shop-name{
+    font-family:'Baloo Thambi 2',sans-serif;
+    font-weight:700;font-size:20px;color:var(--chalk);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .icon-btn{
+    background:var(--board-light);border:1px solid rgba(245,241,227,0.2);
+    color:var(--chalk);border-radius:12px;width:44px;height:44px;
+    font-size:20px;display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;
+  }
+  .icon-btn:active{background:var(--board-lighter);}
+  .total-board{
+    margin-top:10px;text-align:center;
+  }
+  .total-label{font-size:14px;color:var(--chalk-dim);letter-spacing:0.5px;}
+  .total-amount{
+    font-family:'Baloo Thambi 2',sans-serif;
+    font-weight:800;font-size:44px;color:var(--gold);
+    line-height:1.15;
+    text-shadow:0 0 18px rgba(242,176,59,0.25);
+  }
+
+  /* Mic */
+  .mic-wrap{display:flex;flex-direction:column;align-items:center;padding:18px 16px 6px;gap:10px;}
+  .mic-btn{
+    width:96px;height:96px;border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, var(--gold-dim), var(--gold) 70%);
+    border:4px solid rgba(245,241,227,0.25);
+    display:flex;align-items:center;justify-content:center;
+    font-size:38px;color:var(--board);
+    box-shadow:0 6px 0 rgba(0,0,0,0.25), 0 8px 24px rgba(0,0,0,0.35);
+  }
+  .mic-btn:active{transform:translateY(3px);box-shadow:0 3px 0 rgba(0,0,0,0.25);}
+  .mic-btn.listening{
+    animation:pulse 1.1s infinite;
+    background:radial-gradient(circle at 35% 30%, var(--brick-dim), var(--brick) 70%);
+  }
+  @keyframes pulse{
+    0%{box-shadow:0 6px 0 rgba(0,0,0,0.25), 0 0 0 0 rgba(193,68,14,0.5);}
+    70%{box-shadow:0 6px 0 rgba(0,0,0,0.25), 0 0 0 22px rgba(193,68,14,0);}
+    100%{box-shadow:0 6px 0 rgba(0,0,0,0.25), 0 0 0 0 rgba(193,68,14,0);}
+  }
+  .mic-hint{font-size:15px;color:var(--chalk-dim);text-align:center;min-height:22px;}
+  .status-line{
+    font-size:16px;text-align:center;color:var(--chalk);
+    background:var(--board-light);border-radius:12px;padding:8px 14px;
+    margin:0 16px;min-height:20px;
+  }
+
+  /* Items grid */
+  .section-title{
+    font-family:'Baloo Thambi 2',sans-serif;
+    font-size:17px;font-weight:600;color:var(--chalk-dim);
+    margin:18px 16px 8px;
+  }
+  .items-grid{
+    display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px;
+  }
+  .item-card{
+    background:var(--board-light);border:1px solid rgba(245,241,227,0.12);
+    border-radius:var(--radius);padding:12px;
+    display:flex;flex-direction:column;gap:4px;
+    position:relative;overflow:hidden;
+  }
+  .item-card:active{background:var(--board-lighter);}
+  .item-name{font-size:17px;font-weight:600;color:var(--chalk);}
+  .item-price{font-size:15px;color:var(--gold);font-weight:600;}
+  .item-add-badge{
+    position:absolute;top:8px;right:8px;
+    background:var(--gold);color:var(--board);
+    font-weight:800;font-size:13px;border-radius:8px;padding:1px 7px;
+    opacity:0;transform:scale(0.6);
+    transition:opacity 0.2s, transform 0.2s;
+  }
+  .item-card.bump .item-add-badge{opacity:1;transform:scale(1);}
+  .item-card.bump{animation:cardbump 0.25s ease;}
+  @keyframes cardbump{0%{transform:scale(1);}50%{transform:scale(0.96);}100%{transform:scale(1);}}
+
+  .empty-items{margin:10px 16px;color:var(--chalk-dim);font-size:15px;text-align:center;padding:20px;border:1px dashed rgba(245,241,227,0.25);border-radius:var(--radius);}
+
+  /* Bill list */
+  .bill-box{margin:10px 16px 0;background:rgba(0,0,0,0.15);border-radius:var(--radius);padding:6px 4px;min-height:60px;}
+  .bill-row{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:10px 12px;border-bottom:1px dashed rgba(245,241,227,0.15);
+    animation:rowIn 0.2s ease;
+  }
+  .bill-row:last-child{border-bottom:none;}
+  @keyframes rowIn{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}
+  .bill-row-name{font-size:15.5px;}
+  .bill-row-name b{color:var(--gold);}
+  .bill-row-right{display:flex;align-items:center;gap:10px;}
+  .bill-row-amt{font-size:15.5px;font-weight:700;min-width:64px;text-align:right;}
+  .del-x{
+    width:30px;height:30px;border-radius:8px;background:rgba(224,82,82,0.15);
+    color:var(--danger);border:1px solid rgba(224,82,82,0.4);
+    display:flex;align-items:center;justify-content:center;font-size:16px;
+  }
+  .bill-empty{padding:18px;text-align:center;color:var(--chalk-dim);font-size:15px;}
+
+  /* Bottom bar */
+  .bottom-bar{
+    position:fixed;left:0;right:0;bottom:0;z-index:20;
+    background:var(--board);border-top:2px dashed rgba(245,241,227,0.25);
+    padding:10px 16px calc(10px + env(safe-area-inset-bottom));
+    max-width:520px;margin:0 auto;
+    display:flex;gap:10px;
+  }
+  .btn{
+    flex:1;border:none;border-radius:14px;padding:16px 10px;
+    font-family:'Baloo Thambi 2',sans-serif;font-weight:700;font-size:17px;
+    display:flex;align-items:center;justify-content:center;gap:6px;
+  }
+  .btn-finish{background:var(--brick);color:var(--chalk);box-shadow:0 4px 0 var(--brick-dim);}
+  .btn-finish:active{transform:translateY(3px);box-shadow:0 1px 0 var(--brick-dim);}
+  .btn-history{background:var(--board-light);color:var(--chalk);flex:0 0 56px;box-shadow:0 4px 0 rgba(0,0,0,0.3);border:1px solid rgba(245,241,227,0.15);}
+  .btn-history:active{transform:translateY(3px);}
+
+  /* Modal */
+  .overlay{
+    position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:50;
+    display:none;align-items:flex-end;justify-content:center;
+  }
+  .overlay.show{display:flex;}
+  .sheet{
+    background:var(--board-light);width:100%;max-width:520px;
+    border-radius:22px 22px 0 0;max-height:88vh;overflow-y:auto;
+    padding:16px 16px calc(20px + env(safe-area-inset-bottom));
+  }
+  .sheet-handle{width:40px;height:5px;background:rgba(245,241,227,0.3);border-radius:4px;margin:0 auto 12px;}
+  .sheet-title{font-family:'Baloo Thambi 2',sans-serif;font-size:20px;font-weight:700;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;}
+  .field-label{font-size:14px;color:var(--chalk-dim);margin:10px 0 4px;}
+  .field-row{display:flex;gap:8px;}
+  input[type=text],input[type=number]{
+    width:100%;background:var(--board);border:1px solid rgba(245,241,227,0.25);
+    color:var(--chalk);border-radius:10px;padding:12px;font-size:16px;
+    font-family:'Noto Sans Tamil',sans-serif;
+  }
+  .mic-mini{
+    flex:0 0 48px;background:var(--gold);color:var(--board);border:none;
+    border-radius:10px;font-size:18px;display:flex;align-items:center;justify-content:center;
+  }
+  .mic-mini.listening{background:var(--brick);color:var(--chalk);}
+  .save-btn{
+    margin-top:16px;width:100%;background:var(--ok);color:#123018;border:none;
+    border-radius:12px;padding:14px;font-weight:700;font-size:17px;font-family:'Baloo Thambi 2',sans-serif;
+  }
+  .existing-item-row{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:10px 4px;border-bottom:1px solid rgba(245,241,227,0.1);
+  }
+  .existing-item-row .info{font-size:15px;}
+  .existing-item-row .info b{color:var(--gold);}
+  .row-actions{display:flex;gap:6px;}
+  .mini-btn{background:var(--board);border:1px solid rgba(245,241,227,0.25);color:var(--chalk);border-radius:8px;width:34px;height:34px;font-size:15px;}
+  .mini-btn.del{color:var(--danger);border-color:rgba(224,82,82,0.4);}
+  .divider-note{font-size:13px;color:var(--chalk-dim);margin-top:14px;line-height:1.5;}
+  .history-row{padding:10px 4px;border-bottom:1px dashed rgba(245,241,227,0.15);display:flex;justify-content:space-between;font-size:15px;}
+  .history-day-total{font-family:'Baloo Thambi 2',sans-serif;color:var(--gold);font-size:22px;text-align:right;margin-top:10px;}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <header>
+    <div class="shop-row">
+      <div class="shop-name" id="shopNameDisplay">என் கடை</div>
+      <button class="icon-btn" id="settingsBtn" title="பொருட்கள்">⚙️</button>
+    </div>
+    <div class="total-board">
+      <div class="total-label">மொத்தம்</div>
+      <div class="total-amount">₹<span id="totalAmt">0</span></div>
+    </div>
+  </header>
+
+  <div class="mic-wrap">
+    <button class="mic-btn" id="micBtn">🎙️</button>
+    <div class="mic-hint" id="micHint">பொருள் பெயரும் எண்ணிக்கையும் சொல்லுங்கள்</div>
+  </div>
+  <div class="status-line" id="statusLine">உதாரணம்: "அரிசி மூன்று" என்று சொல்லுங்கள்</div>
+
+  <div class="section-title">பொருட்கள் (தட்டவும்)</div>
+  <div class="items-grid" id="itemsGrid"></div>
+
+  <div class="section-title">இந்த பில்</div>
+  <div class="bill-box" id="billBox"></div>
+
+  <div class="bottom-bar">
+    <button class="btn btn-history" id="historyBtn">📒</button>
+    <button class="btn btn-finish" id="finishBtn">✅ பில் முடி</button>
+  </div>
+</div>
+
+<!-- Settings sheet -->
+<div class="overlay" id="settingsOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">பொருட்கள் திருத்த <button class="icon-btn" id="closeSettings">✕</button></div>
+
+    <div class="field-label">கடை பெயர்</div>
+    <input type="text" id="shopNameInput" placeholder="என் கடை">
+
+    <div class="field-label">புதிய பொருள் பெயர்</div>
+    <div class="field-row">
+      <input type="text" id="newItemName" placeholder="எ.கா. அரிசி">
+      <button class="mic-mini" id="newItemMic">🎙️</button>
+    </div>
+    <div class="field-label">விலை (₹)</div>
+    <input type="number" id="newItemPrice" inputmode="decimal" placeholder="எ.கா. 50">
+    <button class="save-btn" id="addItemBtn">+ பொருள் சேர்</button>
+
+    <div class="field-label" style="margin-top:20px;">இருக்கும் பொருட்கள்</div>
+    <div id="existingItemsList"></div>
+
+    <div class="divider-note">💡 பொருள் பெயரை மைக் பட்டன் மூலம் பேசி நிரப்பலாம். விலையை மட்டும் தட்டச்சு செய்யவும்.</div>
+  </div>
+</div>
+
+<!-- History sheet -->
+<div class="overlay" id="historyOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">இன்றைய விற்பனை <button class="icon-btn" id="closeHistory">✕</button></div>
+    <div id="historyList"></div>
+    <div class="history-day-total" id="historyDayTotal"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const STORAGE_KEY_ITEMS = "kadai:items";
+  const STORAGE_KEY_SHOPNAME = "kadai:shopname";
+  const todayKey = () => "kadai:sales:" + new Date().toISOString().slice(0,10);
+
+  const DEFAULT_ITEMS = [
+    {id:"1", name:"அரிசி", price:55},
+    {id:"2", name:"சர்க்கரை", price:45},
+    {id:"3", name:"உப்பு", price:20},
+    {id:"4", name:"பருப்பு", price:110},
+    {id:"5", name:"எண்ணெய்", price:150},
+    {id:"6", name:"பால் பாக்கெட்", price:28},
+    {id:"7", name:"தேநீர் பொடி", price:60},
+    {id:"8", name:"பிஸ்கட்", price:10},
+    {id:"9", name:"சோப்பு", price:15},
+    {id:"10", name:"வெங்காயம்", price:35}
+  ];
+
+  const NUMBER_WORDS = {
+    "பூஜ்ஜியம்":0,"சுழி":0,
+    "ஒன்று":1,"ஒரு":1,"ஓர்":1,
+    "இரண்டு":2,"ரெண்டு":2,
+    "மூன்று":3,"மூணு":3,
+    "நான்கு":4,"நாலு":4,
+    "ஐந்து":5,"அஞ்சு":5,
+    "ஆறு":6,
+    "ஏழு":7,
+    "எட்டு":8,
+    "ஒன்பது":9,"ஒன்பதொ":9,
+    "பத்து":10,
+    "பதினொன்று":11,"பதினொன்னு":11,
+    "பன்னிரண்டு":12,
+    "பதிமூன்று":13,
+    "பதினான்கு":14,"பதினாலு":14,
+    "பதினைந்து":15,"பதினஞ்சு":15,
+    "பதினாறு":16,
+    "பதினேழு":17,
+    "பதினெட்டு":18,
+    "பத்தொன்பது":19,
+    "இருபது":20,
+    "இருபத்தைந்து":25,
+    "முப்பது":30,
+    "நாற்பது":40,"நாப்பது":40,
+    "ஐம்பது":50,
+    "அறுபது":60,
+    "எழுபது":70,
+    "எண்பது":80,
+    "தொண்ணூறு":90,
+    "நூறு":100,
+    "அரை":0.5,
+    "கால்":0.25,
+    "ஒன்றரை":1.5,"ஒன்னரை":1.5,
+    "இரண்டரை":2.5,"ரெண்டரை":2.5,
+    "மூன்றரை":3.5,"மூணரை":3.5,
+    "நான்கரை":4.5,"நாலரை":4.5,
+    "ஐந்தரை":5.5,"அஞ்சரை":5.5
+  };
+
+  let items = [];
+  let bill = []; // {itemId, name, price, qty}
+  let shopName = "என் கடை";
+  let recognition = null;
+  let listeningTarget = null; // 'main' or 'newItem'
+
+  const $ = (id) => document.getElementById(id);
+
+  async function loadState(){
+    try{
+      const r = await window.storage.get(STORAGE_KEY_ITEMS);
+      items = r ? JSON.parse(r.value) : DEFAULT_ITEMS.slice();
+    }catch(e){ items = DEFAULT_ITEMS.slice(); }
+    try{
+      const r2 = await window.storage.get(STORAGE_KEY_SHOPNAME);
+      shopName = r2 ? r2.value : "என் கடை";
+    }catch(e){ shopName = "என் கடை"; }
+    $("shopNameDisplay").textContent = shopName;
+    $("shopNameInput").value = shopName;
+    renderItems();
+  }
+
+  async function saveItems(){
+    try{ await window.storage.set(STORAGE_KEY_ITEMS, JSON.stringify(items)); }catch(e){}
+  }
+  async function saveShopName(){
+    try{ await window.storage.set(STORAGE_KEY_SHOPNAME, shopName); }catch(e){}
+  }
+
+  function renderItems(){
+    const grid = $("itemsGrid");
+    if(items.length === 0){
+      grid.innerHTML = "";
+      grid.insertAdjacentHTML("afterend", "");
+      $("itemsGrid").outerHTML = '<div class="empty-items" id="itemsGrid">பொருட்கள் இல்லை. ⚙️ பட்டனை தட்டி பொருட்களை சேர்க்கவும்.</div>';
+      return;
+    }
+    grid.innerHTML = items.map(it => `
+      <div class="item-card" data-id="${it.id}">
+        <span class="item-add-badge">+1</span>
+        <div class="item-name">${escapeHtml(it.name)}</div>
+        <div class="item-price">₹${it.price}</div>
+      </div>
+    `).join("");
+    grid.querySelectorAll(".item-card").forEach(card => {
+      card.addEventListener("click", () => {
+        addToBill(card.dataset.id, 1);
+        card.classList.add("bump");
+        setTimeout(()=>card.classList.remove("bump"), 350);
+      });
+    });
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+
+  function addToBill(itemId, qty){
+    const item = items.find(i => i.id === itemId);
+    if(!item) return;
+    const existing = bill.find(b => b.itemId === itemId);
+    if(existing){ existing.qty += qty; }
+    else{ bill.push({itemId, name:item.name, price:item.price, qty}); }
+    renderBill();
+  }
+
+  function removeBillRow(index){
+    bill.splice(index,1);
+    renderBill();
+  }
+
+  function renderBill(){
+    const box = $("billBox");
+    if(bill.length === 0){
+      box.innerHTML = '<div class="bill-empty">இன்னும் பொருள் சேர்க்கவில்லை</div>';
+    } else {
+      box.innerHTML = bill.map((b,idx) => `
+        <div class="bill-row">
+          <div class="bill-row-name">${escapeHtml(b.name)} × <b>${formatQty(b.qty)}</b></div>
+          <div class="bill-row-right">
+            <div class="bill-row-amt">₹${(b.price*b.qty).toFixed(0)}</div>
+            <button class="del-x" data-idx="${idx}">✕</button>
+          </div>
+        </div>
+      `).join("");
+      box.querySelectorAll(".del-x").forEach(btn => {
+        btn.addEventListener("click", () => removeBillRow(parseInt(btn.dataset.idx)));
+      });
+    }
+    const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
+    $("totalAmt").textContent = total.toFixed(0);
+  }
+
+  function formatQty(q){
+    return (q % 1 === 0) ? String(q) : String(q);
+  }
+
+  // ---- Speech recognition setup ----
+  const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+  function ensureRecognition(){
+    if(!SpeechRecognitionCtor) return null;
+    if(recognition) return recognition;
+    recognition = new SpeechRecognitionCtor();
+    recognition.lang = "ta-IN";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 3;
+    recognition.onresult = (e) => {
+      const transcript = e.results[0][0].transcript.trim();
+      if(listeningTarget === "main"){
+        handleMainTranscript(transcript);
+      } else if(listeningTarget === "newItem"){
+        $("newItemName").value = transcript;
+      }
+    };
+    recognition.onerror = (e) => {
+      const reasons = {
+        "not-allowed": "மைக் அனுமதி மறுக்கப்பட்டது. Chrome அமைப்புகளில் மைக் அனுமதி கொடுக்கவும்.",
+        "service-not-allowed": "இந்த பக்கம் https இல்லாததால் மைக் வேலை செய்யவில்லை. கீழே உள்ள வழிமுறையைப் பின்பற்றவும்.",
+        "audio-capture": "மைக் கிடைக்கவில்லை. வேறு ஆப் மைக்கை பயன்படுத்துகிறதா என பாருங்கள்.",
+        "network": "இணைய இணைப்பு இல்லை. WiFi/மொபைல் டேட்டாவை சரிபார்க்கவும்.",
+        "no-speech": "எதுவும் கேட்கவில்லை. மீண்டும் தட்டி பேசவும்."
+      };
+      setStatus(reasons[e.error] || ("மைக் பிழை (" + e.error + "). மீண்டும் முயற்சி செய்யவும்."));
+      stopListeningUI();
+    };
+    recognition.onend = () => { stopListeningUI(); };
+    return recognition;
+  }
+
+  function stopListeningUI(){
+    $("micBtn").classList.remove("listening");
+    $("newItemMic").classList.remove("listening");
+    listeningTarget = null;
+  }
+
+  function setStatus(text){
+    $("statusLine").textContent = text;
+  }
+
+  function speak(text){
+    try{
+      if(!window.speechSynthesis) return;
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = "ta-IN";
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(u);
+    }catch(e){}
+  }
+
+  function parseNumberFromTokens(tokens){
+    for(const t of tokens){
+      const clean = t.replace(/[.,]/g,"");
+      if(NUMBER_WORDS.hasOwnProperty(clean)) return NUMBER_WORDS[clean];
+      if(/^\d+(\.\d+)?$/.test(clean)) return parseFloat(clean);
+    }
+    return null;
+  }
+
+  function handleMainTranscript(transcript){
+    setStatus('கேட்டது: "' + transcript + '"');
+    const normalized = transcript.replace(/\s+/g," ").trim();
+    let matchedItem = null;
+    let matchLen = 0;
+    for(const it of items){
+      if(normalized.includes(it.name) && it.name.length > matchLen){
+        matchedItem = it; matchLen = it.name.length;
+      }
+    }
+    if(!matchedItem){
+      setStatus('பொருள் கிடைக்கவில்லை. மீண்டும் சொல்லுங்கள் அல்லது பொருளை தட்டவும்.');
+      speak("பொருள் புரியவில்லை");
+      return;
+    }
+    const remainder = normalized.replace(matchedItem.name, " ").split(" ").filter(Boolean);
+    let qty = parseNumberFromTokens(remainder);
+    if(qty === null || qty === 0) qty = 1;
+    addToBill(matchedItem.id, qty);
+    const amt = (matchedItem.price*qty).toFixed(0);
+    setStatus(matchedItem.name + " × " + formatQty(qty) + " — ₹" + amt + " சேர்க்கப்பட்டது");
+    speak(matchedItem.name + " " + formatQty(qty) + ", ரூபாய் " + amt + " சேர்க்கப்பட்டது");
+  }
+
+  $("micBtn").addEventListener("click", () => {
+    const rec = ensureRecognition();
+    if(!rec){
+      setStatus("இந்த பிரவுசரில் மைக் கிடைக்கவில்லை. Chrome பயன்படுத்தவும்.");
+      return;
+    }
+    if(listeningTarget){ rec.stop(); return; }
+    listeningTarget = "main";
+    $("micBtn").classList.add("listening");
+    setStatus("கேட்கிறேன்...");
+    try{ rec.start(); }catch(e){}
+  });
+
+  $("newItemMic").addEventListener("click", () => {
+    const rec = ensureRecognition();
+    if(!rec) return;
+    if(listeningTarget){ rec.stop(); return; }
+    listeningTarget = "newItem";
+    $("newItemMic").classList.add("listening");
+    try{ rec.start(); }catch(e){}
+  });
+
+  // ---- Finish bill ----
+  $("finishBtn").addEventListener("click", async () => {
+    if(bill.length === 0){
+      setStatus("பில் காலியாக உள்ளது");
+      return;
+    }
+    const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
+    const key = todayKey();
+    let dayList = [];
+    try{
+      const r = await window.storage.get(key);
+      dayList = r ? JSON.parse(r.value) : [];
+    }catch(e){ dayList = []; }
+    dayList.push({time:new Date().toLocaleTimeString("ta-IN",{hour:'2-digit',minute:'2-digit'}), total, items: bill.map(b=>({name:b.name, qty:b.qty, price:b.price}))});
+    try{ await window.storage.set(key, JSON.stringify(dayList)); }catch(e){}
+    speak("மொத்தம் ரூபாய் " + total.toFixed(0) + ". பில் முடிந்தது");
+    bill = [];
+    renderBill();
+    setStatus("பில் சேமிக்கப்பட்டது ✅ அடுத்த வாடிக்கையாளர்");
+  });
+
+  // ---- Settings sheet ----
+  $("settingsBtn").addEventListener("click", () => {
+    renderExistingItems();
+    $("settingsOverlay").classList.add("show");
+  });
+  $("closeSettings").addEventListener("click", async () => {
+    shopName = $("shopNameInput").value.trim() || "என் கடை";
+    $("shopNameDisplay").textContent = shopName;
+    await saveShopName();
+    $("settingsOverlay").classList.remove("show");
+  });
+
+  $("addItemBtn").addEventListener("click", async () => {
+    const name = $("newItemName").value.trim();
+    const price = parseFloat($("newItemPrice").value);
+    if(!name || isNaN(price) || price <= 0){
+      setStatus("பொருள் பெயரும் விலையும் சரியாக இடவும்");
+      return;
+    }
+    items.push({id: Date.now().toString(), name, price});
+    await saveItems();
+    $("newItemName").value = "";
+    $("newItemPrice").value = "";
+    renderItems();
+    renderExistingItems();
+  });
+
+  function renderExistingItems(){
+    const list = $("existingItemsList");
+    if(items.length === 0){
+      list.innerHTML = '<div class="divider-note">பொருட்கள் இல்லை</div>';
+      return;
+    }
+    list.innerHTML = items.map(it => `
+      <div class="existing-item-row">
+        <div class="info">${escapeHtml(it.name)} — <b>₹${it.price}</b></div>
+        <div class="row-actions">
+          <button class="mini-btn edit" data-id="${it.id}">✏️</button>
+          <button class="mini-btn del" data-id="${it.id}">🗑️</button>
+        </div>
+      </div>
+    `).join("");
+    list.querySelectorAll(".mini-btn.del").forEach(btn=>{
+      btn.addEventListener("click", async ()=>{
+        items = items.filter(i=>i.id!==btn.dataset.id);
+        await saveItems();
+        renderItems();
+        renderExistingItems();
+      });
+    });
+    list.querySelectorAll(".mini-btn.edit").forEach(btn=>{
+      btn.addEventListener("click", async ()=>{
+        const it = items.find(i=>i.id===btn.dataset.id);
+        if(!it) return;
+        const newPrice = prompt("புதிய விலை (₹) — " + it.name, it.price);
+        if(newPrice !== null && !isNaN(parseFloat(newPrice))){
+          it.price = parseFloat(newPrice);
+          await saveItems();
+          renderItems();
+          renderExistingItems();
+        }
+      });
+    });
+  }
+
+  // ---- History sheet ----
+  $("historyBtn").addEventListener("click", async () => {
+    const key = todayKey();
+    let dayList = [];
+    try{
+      const r = await window.storage.get(key);
+      dayList = r ? JSON.parse(r.value) : [];
+    }catch(e){ dayList = []; }
+    const listEl = $("historyList");
+    if(dayList.length === 0){
+      listEl.innerHTML = '<div class="divider-note">இன்று இன்னும் பில் இல்லை</div>';
+      $("historyDayTotal").textContent = "";
+    } else {
+      listEl.innerHTML = dayList.map(d => `
+        <div class="history-row"><span>${d.time}</span><span>₹${d.total.toFixed(0)}</span></div>
+      `).join("");
+      const dayTotal = dayList.reduce((s,d)=>s+d.total,0);
+      $("historyDayTotal").textContent = "இன்று மொத்தம்: ₹" + dayTotal.toFixed(0);
+    }
+    $("historyOverlay").classList.add("show");
+  });
+  $("closeHistory").addEventListener("click", () => {
+    $("historyOverlay").classList.remove("show");
+  });
+
+  [$("settingsOverlay"), $("historyOverlay")].forEach(ov => {
+    ov.addEventListener("click", (e)=>{ if(e.target === ov) ov.classList.remove("show"); });
+  });
+
+  loadState();
+  renderBill();
+})();
+</script>
+</body>
+</html>
