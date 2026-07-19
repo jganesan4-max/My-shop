@@ -204,6 +204,47 @@
   .divider-note{font-size:13px;color:var(--chalk-dim);margin-top:14px;line-height:1.5;}
   .history-row{padding:10px 4px;border-bottom:1px dashed rgba(245,241,227,0.15);display:flex;justify-content:space-between;font-size:15px;}
   .history-day-total{font-family:'Baloo Thambi 2',sans-serif;color:var(--gold);font-size:22px;text-align:right;margin-top:10px;}
+  .history-row .pay-tag{color:var(--chalk-dim);font-size:13px;}
+
+  .item-count{font-size:14px;color:var(--chalk-dim);margin-top:2px;}
+
+  /* Payment sheet */
+  .pay-total-display{
+    text-align:center;padding:10px 0 6px;
+  }
+  .pay-total-label{font-size:14px;color:var(--chalk-dim);}
+  .pay-total-amount{font-family:'Baloo Thambi 2',sans-serif;font-weight:800;font-size:38px;color:var(--gold);}
+  .pay-method-row{display:flex;gap:10px;margin:14px 0 4px;}
+  .pay-method-btn{
+    flex:1;padding:16px 8px;border-radius:14px;border:2px solid rgba(245,241,227,0.2);
+    background:var(--board);color:var(--chalk);font-family:'Baloo Thambi 2',sans-serif;
+    font-weight:700;font-size:16px;display:flex;flex-direction:column;align-items:center;gap:6px;
+  }
+  .pay-method-btn .emoji{font-size:26px;}
+  .pay-method-btn.active{border-color:var(--gold);background:var(--board-lighter);color:var(--gold);}
+  .cash-panel{display:none;margin-top:10px;}
+  .cash-panel.show{display:block;}
+  .denom-row{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;}
+  .denom-btn{
+    background:var(--board);border:1px solid rgba(245,241,227,0.25);color:var(--chalk);
+    border-radius:10px;padding:10px 14px;font-size:15px;font-weight:600;
+  }
+  .denom-btn:active{background:var(--board-lighter);}
+  .balance-panel{
+    margin-top:14px;border-radius:14px;padding:14px;text-align:center;
+    background:rgba(0,0,0,0.15);
+  }
+  .balance-label{font-size:14px;color:var(--chalk-dim);}
+  .balance-amount{font-family:'Baloo Thambi 2',sans-serif;font-weight:800;font-size:32px;margin-top:2px;}
+  .balance-amount.give{color:var(--ok);}
+  .balance-amount.short{color:var(--danger);}
+  .bank-panel{display:none;margin-top:10px;text-align:center;color:var(--chalk-dim);font-size:15px;padding:10px 0;}
+  .bank-panel.show{display:block;}
+  .confirm-pay-btn{
+    margin-top:16px;width:100%;background:var(--ok);color:#123018;border:none;
+    border-radius:12px;padding:15px;font-weight:700;font-size:18px;font-family:'Baloo Thambi 2',sans-serif;
+  }
+  .confirm-pay-btn:disabled{opacity:0.4;}
 </style>
 </head>
 <body>
@@ -217,6 +258,7 @@
     <div class="total-board">
       <div class="total-label">மொத்தம்</div>
       <div class="total-amount">₹<span id="totalAmt">0</span></div>
+      <div class="item-count" id="itemCountLine">0 பொருட்கள்</div>
     </div>
   </header>
 
@@ -270,6 +312,40 @@
     <div class="sheet-title">இன்றைய விற்பனை <button class="icon-btn" id="closeHistory">✕</button></div>
     <div id="historyList"></div>
     <div class="history-day-total" id="historyDayTotal"></div>
+  </div>
+</div>
+
+<!-- Payment sheet -->
+<div class="overlay" id="paymentOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">பணம் பெறுதல் <button class="icon-btn" id="closePayment">✕</button></div>
+
+    <div class="pay-total-display">
+      <div class="pay-total-label">பில் தொகை</div>
+      <div class="pay-total-amount">₹<span id="payTotalAmt">0</span></div>
+    </div>
+
+    <div class="pay-method-row">
+      <button class="pay-method-btn" id="payCashBtn"><span class="emoji">💵</span>பணம் (Cash)</button>
+      <button class="pay-method-btn" id="payBankBtn"><span class="emoji">🏦</span>வங்கி / UPI</button>
+    </div>
+
+    <div class="cash-panel" id="cashPanel">
+      <div class="field-label">பெறப்பட்ட தொகை (₹)</div>
+      <input type="number" id="cashReceived" inputmode="decimal" placeholder="எ.கா. 200">
+      <div class="denom-row" id="denomRow"></div>
+      <div class="balance-panel" id="balancePanel" style="display:none;">
+        <div class="balance-label" id="balanceLabel">திரும்ப கொடுக்க வேண்டியது</div>
+        <div class="balance-amount give" id="balanceAmount">₹0</div>
+      </div>
+    </div>
+
+    <div class="bank-panel" id="bankPanel">
+      வங்கி / UPI மூலம் முழு தொகையும் பெறப்பட்டதாக பதிவு செய்யப்படும்.
+    </div>
+
+    <button class="confirm-pay-btn" id="confirmPayBtn" disabled>முடிந்தது ✅</button>
   </div>
 </div>
 
@@ -423,6 +499,10 @@
     }
     const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
     $("totalAmt").textContent = total.toFixed(0);
+    const totalQty = bill.reduce((s,b)=>s+b.qty,0);
+    $("itemCountLine").textContent = bill.length === 0
+      ? "0 பொருட்கள்"
+      : bill.length + " வகை பொருட்கள் (மொத்தம் " + formatQty(totalQty) + ")";
   }
 
   function formatQty(q){
@@ -536,26 +616,135 @@
     try{ rec.start(); }catch(e){}
   });
 
-  // ---- Finish bill ----
-  $("finishBtn").addEventListener("click", async () => {
+  // ---- Finish bill -> opens payment sheet ----
+  let payMethod = null; // 'cash' or 'bank'
+
+  $("finishBtn").addEventListener("click", () => {
     if(bill.length === 0){
       setStatus("பில் காலியாக உள்ளது");
       return;
     }
+    openPaymentSheet();
+  });
+
+  function openPaymentSheet(){
     const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
+    payMethod = null;
+    $("payTotalAmt").textContent = total.toFixed(0);
+    $("payCashBtn").classList.remove("active");
+    $("payBankBtn").classList.remove("active");
+    $("cashPanel").classList.remove("show");
+    $("bankPanel").classList.remove("show");
+    $("cashReceived").value = "";
+    $("balancePanel").style.display = "none";
+    $("confirmPayBtn").disabled = true;
+
+    const denomRow = $("denomRow");
+    const denoms = [...new Set([50,100,200,500,2000, Math.ceil(total/10)*10])].filter(d=>d>0).sort((a,b)=>a-b);
+    denomRow.innerHTML = denoms.map(d => `<button class="denom-btn" data-amt="${d}">₹${d}</button>`).join("");
+    denomRow.querySelectorAll(".denom-btn").forEach(btn=>{
+      btn.addEventListener("click", () => {
+        $("cashReceived").value = btn.dataset.amt;
+        updateBalanceDisplay();
+      });
+    });
+
+    $("paymentOverlay").classList.add("show");
+  }
+
+  $("payCashBtn").addEventListener("click", () => {
+    payMethod = "cash";
+    $("payCashBtn").classList.add("active");
+    $("payBankBtn").classList.remove("active");
+    $("cashPanel").classList.add("show");
+    $("bankPanel").classList.remove("show");
+    updateBalanceDisplay();
+  });
+
+  $("payBankBtn").addEventListener("click", () => {
+    payMethod = "bank";
+    $("payBankBtn").classList.add("active");
+    $("payCashBtn").classList.remove("active");
+    $("bankPanel").classList.add("show");
+    $("cashPanel").classList.remove("show");
+    $("confirmPayBtn").disabled = false;
+  });
+
+  $("cashReceived").addEventListener("input", updateBalanceDisplay);
+
+  function updateBalanceDisplay(){
+    const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
+    const received = parseFloat($("cashReceived").value);
+    const panel = $("balancePanel");
+    if(isNaN(received) || received <= 0){
+      panel.style.display = "none";
+      $("confirmPayBtn").disabled = true;
+      return;
+    }
+    panel.style.display = "block";
+    const diff = received - total;
+    const amtEl = $("balanceAmount");
+    if(diff >= 0){
+      $("balanceLabel").textContent = "திரும்ப கொடுக்க வேண்டியது";
+      amtEl.textContent = "₹" + diff.toFixed(0);
+      amtEl.classList.remove("short");
+      amtEl.classList.add("give");
+      $("confirmPayBtn").disabled = false;
+    } else {
+      $("balanceLabel").textContent = "இன்னும் தேவை";
+      amtEl.textContent = "₹" + Math.abs(diff).toFixed(0);
+      amtEl.classList.remove("give");
+      amtEl.classList.add("short");
+      $("confirmPayBtn").disabled = false;
+    }
+  }
+
+  $("confirmPayBtn").addEventListener("click", async () => {
+    const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
+    let received = total, balance = 0;
+    if(payMethod === "cash"){
+      received = parseFloat($("cashReceived").value) || 0;
+      balance = received - total;
+    } else if(payMethod === "bank"){
+      received = total; balance = 0;
+    } else {
+      return; // no method chosen yet
+    }
+    await finalizeBill(payMethod, total, received, balance);
+    $("paymentOverlay").classList.remove("show");
+  });
+
+  $("closePayment").addEventListener("click", () => {
+    $("paymentOverlay").classList.remove("show");
+  });
+
+  async function finalizeBill(method, total, received, balance){
     const key = todayKey();
     let dayList = [];
     try{
       const r = await window.storage.get(key);
       dayList = r ? JSON.parse(r.value) : [];
     }catch(e){ dayList = []; }
-    dayList.push({time:new Date().toLocaleTimeString("ta-IN",{hour:'2-digit',minute:'2-digit'}), total, items: bill.map(b=>({name:b.name, qty:b.qty, price:b.price}))});
+    dayList.push({
+      time:new Date().toLocaleTimeString("ta-IN",{hour:'2-digit',minute:'2-digit'}),
+      total, method, received, balance,
+      items: bill.map(b=>({name:b.name, qty:b.qty, price:b.price}))
+    });
     try{ await window.storage.set(key, JSON.stringify(dayList)); }catch(e){}
-    speak("மொத்தம் ரூபாய் " + total.toFixed(0) + ". பில் முடிந்தது");
+
+    if(method === "cash" && balance > 0){
+      speak("மொத்தம் ரூபாய் " + total.toFixed(0) + ". திரும்ப கொடுக்க வேண்டியது ரூபாய் " + balance.toFixed(0));
+      setStatus("✅ திரும்ப கொடுக்க வேண்டியது ₹" + balance.toFixed(0));
+    } else if(method === "cash" && balance < 0){
+      speak("இன்னும் ரூபாய் " + Math.abs(balance).toFixed(0) + " தேவை");
+      setStatus("⚠️ இன்னும் தேவை ₹" + Math.abs(balance).toFixed(0));
+    } else {
+      speak("மொத்தம் ரூபாய் " + total.toFixed(0) + ". பில் முடிந்தது");
+      setStatus("பில் சேமிக்கப்பட்டது ✅ அடுத்த வாடிக்கையாளர்");
+    }
     bill = [];
     renderBill();
-    setStatus("பில் சேமிக்கப்பட்டது ✅ அடுத்த வாடிக்கையாளர்");
-  });
+  }
 
   // ---- Settings sheet ----
   $("settingsBtn").addEventListener("click", () => {
@@ -635,9 +824,10 @@
       listEl.innerHTML = '<div class="divider-note">இன்று இன்னும் பில் இல்லை</div>';
       $("historyDayTotal").textContent = "";
     } else {
-      listEl.innerHTML = dayList.map(d => `
-        <div class="history-row"><span>${d.time}</span><span>₹${d.total.toFixed(0)}</span></div>
-      `).join("");
+      listEl.innerHTML = dayList.map(d => {
+        const tag = d.method === "cash" ? "💵 Cash" : (d.method === "bank" ? "🏦 Bank" : "");
+        return `<div class="history-row"><span>${d.time} <span class="pay-tag">${tag}</span></span><span>₹${d.total.toFixed(0)}</span></div>`;
+      }).join("");
       const dayTotal = dayList.reduce((s,d)=>s+d.total,0);
       $("historyDayTotal").textContent = "இன்று மொத்தம்: ₹" + dayTotal.toFixed(0);
     }
@@ -647,7 +837,7 @@
     $("historyOverlay").classList.remove("show");
   });
 
-  [$("settingsOverlay"), $("historyOverlay")].forEach(ov => {
+  [$("settingsOverlay"), $("historyOverlay"), $("paymentOverlay")].forEach(ov => {
     ov.addEventListener("click", (e)=>{ if(e.target === ov) ov.classList.remove("show"); });
   });
 
