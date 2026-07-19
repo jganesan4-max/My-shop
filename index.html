@@ -143,6 +143,11 @@
     color:var(--danger);border:1px solid rgba(224,82,82,0.4);
     display:flex;align-items:center;justify-content:center;font-size:16px;
   }
+  .edit-x{
+    width:30px;height:30px;border-radius:8px;background:rgba(242,176,59,0.15);
+    color:var(--gold);border:1px solid rgba(242,176,59,0.4);
+    display:flex;align-items:center;justify-content:center;font-size:14px;
+  }
   .bill-empty{padding:18px;text-align:center;color:var(--chalk-dim);font-size:15px;}
 
   /* Bottom bar */
@@ -198,9 +203,14 @@
   }
   .existing-item-row .info{font-size:15px;}
   .existing-item-row .info b{color:var(--gold);}
+  .existing-item-row.editing{gap:6px;}
+  .existing-item-row.editing input.edit-name{width:auto !important;flex:1;padding:8px;font-size:14px;}
+  .existing-item-row.editing input.edit-price{width:64px !important;flex:0 0 64px;padding:8px;font-size:14px;}
   .row-actions{display:flex;gap:6px;}
-  .mini-btn{background:var(--board);border:1px solid rgba(245,241,227,0.25);color:var(--chalk);border-radius:8px;width:34px;height:34px;font-size:15px;}
-  .mini-btn.del{color:var(--danger);border-color:rgba(224,82,82,0.4);}
+  .mini-btn{background:var(--board);border:1px solid rgba(245,241,227,0.25);color:var(--chalk);border-radius:8px;width:34px;height:34px;font-size:15px;flex-shrink:0;}
+  .mini-btn.del-btn{color:var(--danger);border-color:rgba(224,82,82,0.4);}
+  .mini-btn.cancel-edit-btn{color:var(--danger);border-color:rgba(224,82,82,0.4);}
+  .mini-btn.save-edit-btn{color:var(--ok);border-color:rgba(111,191,115,0.4);}
   .divider-note{font-size:13px;color:var(--chalk-dim);margin-top:14px;line-height:1.5;}
   .history-row{padding:10px 4px;border-bottom:1px dashed rgba(245,241,227,0.15);display:flex;justify-content:space-between;font-size:15px;}
   .history-day-total{font-family:'Baloo Thambi 2',sans-serif;color:var(--gold);font-size:22px;text-align:right;margin-top:10px;}
@@ -264,9 +274,9 @@
 
   <div class="mic-wrap">
     <button class="mic-btn" id="micBtn">🎙️</button>
-    <div class="mic-hint" id="micHint">பொருள் பெயரும் எண்ணிக்கையும் சொல்லுங்கள்</div>
+    <div class="mic-hint" id="micHint">ஒரு தடவை தட்டவும் — பிறகு பொருட்களை ஒவ்வொன்றாக சொல்லிக் கொண்டே இருங்கள்</div>
   </div>
-  <div class="status-line" id="statusLine">உதாரணம்: "அரிசி மூன்று" என்று சொல்லுங்கள்</div>
+  <div class="status-line" id="statusLine">உதாரணம்: "அரிசி மூன்று" பிறகு "சர்க்கரை இரண்டு" — நிறுத்த மீண்டும் மைக்கை தட்டவும்</div>
 
   <div class="section-title">பொருட்கள் (தட்டவும்)</div>
   <div class="items-grid" id="itemsGrid"></div>
@@ -418,12 +428,12 @@
 
   async function loadState(){
     try{
-      const r = await window.storage.get(STORAGE_KEY_ITEMS);
-      items = r ? JSON.parse(r.value) : DEFAULT_ITEMS.slice();
+      const raw = localStorage.getItem(STORAGE_KEY_ITEMS);
+      items = raw ? JSON.parse(raw) : DEFAULT_ITEMS.slice();
     }catch(e){ items = DEFAULT_ITEMS.slice(); }
     try{
-      const r2 = await window.storage.get(STORAGE_KEY_SHOPNAME);
-      shopName = r2 ? r2.value : "என் கடை";
+      const raw2 = localStorage.getItem(STORAGE_KEY_SHOPNAME);
+      shopName = raw2 || "என் கடை";
     }catch(e){ shopName = "என் கடை"; }
     $("shopNameDisplay").textContent = shopName;
     $("shopNameInput").value = shopName;
@@ -431,10 +441,10 @@
   }
 
   async function saveItems(){
-    try{ await window.storage.set(STORAGE_KEY_ITEMS, JSON.stringify(items)); }catch(e){}
+    try{ localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(items)); }catch(e){}
   }
   async function saveShopName(){
-    try{ await window.storage.set(STORAGE_KEY_SHOPNAME, shopName); }catch(e){}
+    try{ localStorage.setItem(STORAGE_KEY_SHOPNAME, shopName); }catch(e){}
   }
 
   function renderItems(){
@@ -479,6 +489,20 @@
     renderBill();
   }
 
+  function editBillRow(index){
+    const row = bill[index];
+    if(!row) return;
+    const newQty = prompt("புதிய எண்ணிக்கை — " + row.name, row.qty);
+    if(newQty === null) return;
+    const v = parseFloat(newQty);
+    if(isNaN(v) || v <= 0){
+      removeBillRow(index);
+      return;
+    }
+    row.qty = v;
+    renderBill();
+  }
+
   function renderBill(){
     const box = $("billBox");
     if(bill.length === 0){
@@ -489,10 +513,14 @@
           <div class="bill-row-name">${escapeHtml(b.name)} × <b>${formatQty(b.qty)}</b></div>
           <div class="bill-row-right">
             <div class="bill-row-amt">₹${(b.price*b.qty).toFixed(0)}</div>
+            <button class="edit-x" data-idx="${idx}">✏️</button>
             <button class="del-x" data-idx="${idx}">✕</button>
           </div>
         </div>
       `).join("");
+      box.querySelectorAll(".edit-x").forEach(btn => {
+        btn.addEventListener("click", () => editBillRow(parseInt(btn.dataset.idx)));
+      });
       box.querySelectorAll(".del-x").forEach(btn => {
         btn.addEventListener("click", () => removeBillRow(parseInt(btn.dataset.idx)));
       });
@@ -511,6 +539,7 @@
 
   // ---- Speech recognition setup ----
   const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let keepListening = false; // true while in continuous main-listening mode
   function ensureRecognition(){
     if(!SpeechRecognitionCtor) return null;
     if(recognition) return recognition;
@@ -519,7 +548,7 @@
     recognition.interimResults = false;
     recognition.maxAlternatives = 3;
     recognition.onresult = (e) => {
-      const transcript = e.results[0][0].transcript.trim();
+      const transcript = e.results[e.results.length-1][0].transcript.trim();
       if(listeningTarget === "main"){
         handleMainTranscript(transcript);
       } else if(listeningTarget === "newItem"){
@@ -527,6 +556,10 @@
       }
     };
     recognition.onerror = (e) => {
+      if(e.error === "no-speech" && keepListening && listeningTarget === "main"){
+        // silence during continuous listening - just keep going, onend will restart
+        return;
+      }
       const reasons = {
         "not-allowed": "மைக் அனுமதி மறுக்கப்பட்டது. Chrome அமைப்புகளில் மைக் அனுமதி கொடுக்கவும்.",
         "service-not-allowed": "இந்த பக்கம் https இல்லாததால் மைக் வேலை செய்யவில்லை. கீழே உள்ள வழிமுறையைப் பின்பற்றவும்.",
@@ -535,9 +568,21 @@
         "no-speech": "எதுவும் கேட்கவில்லை. மீண்டும் தட்டி பேசவும்."
       };
       setStatus(reasons[e.error] || ("மைக் பிழை (" + e.error + "). மீண்டும் முயற்சி செய்யவும்."));
+      keepListening = false;
       stopListeningUI();
     };
-    recognition.onend = () => { stopListeningUI(); };
+    recognition.onend = () => {
+      if(keepListening && listeningTarget === "main"){
+        // continuous mode: automatically restart listening for the next item
+        setTimeout(() => {
+          if(keepListening && listeningTarget === "main"){
+            try{ recognition.start(); }catch(e){}
+          }
+        }, 250);
+      } else {
+        stopListeningUI();
+      }
+    };
     return recognition;
   }
 
@@ -561,37 +606,77 @@
     }catch(e){}
   }
 
-  function parseNumberFromTokens(tokens){
-    for(const t of tokens){
-      const clean = t.replace(/[.,]/g,"");
-      if(NUMBER_WORDS.hasOwnProperty(clean)) return NUMBER_WORDS[clean];
-      if(/^\d+(\.\d+)?$/.test(clean)) return parseFloat(clean);
-    }
+  function tokenToNumber(tok){
+    const clean = tok.replace(/[.,]/g,"");
+    if(NUMBER_WORDS.hasOwnProperty(clean)) return NUMBER_WORDS[clean];
+    if(/^\d+(\.\d+)?$/.test(clean)) return parseFloat(clean);
     return null;
+  }
+
+  // Parses a transcript that may contain several "item + quantity" pairs,
+  // e.g. "அரிசி மூன்று சர்க்கரை இரண்டு பால் பாக்கெட் ஒன்று"
+  function parseMultipleItems(transcript){
+    const normalized = transcript.replace(/\s+/g," ").trim();
+    if(!normalized) return [];
+    const tokens = normalized.split(" ");
+    const itemTokenLists = items
+      .map(it => ({item: it, toks: it.name.split(" ")}))
+      .sort((a,b) => b.toks.length - a.toks.length); // match longer item names first
+
+    const consumed = new Array(tokens.length).fill(false);
+    const results = [];
+    let i = 0;
+    while(i < tokens.length){
+      if(consumed[i]){ i++; continue; }
+      let matchedItem = null, matchedLen = 0;
+      for(const {item, toks} of itemTokenLists){
+        if(i + toks.length > tokens.length) continue;
+        let ok = true;
+        for(let k=0;k<toks.length;k++){
+          if(tokens[i+k] !== toks[k]){ ok = false; break; }
+        }
+        if(ok){ matchedItem = item; matchedLen = toks.length; break; }
+      }
+      if(matchedItem){
+        for(let k=0;k<matchedLen;k++) consumed[i+k] = true;
+        let qty = null;
+        const afterIdx = i + matchedLen;
+        if(afterIdx < tokens.length && !consumed[afterIdx]){
+          const v = tokenToNumber(tokens[afterIdx]);
+          if(v !== null){ qty = v; consumed[afterIdx] = true; }
+        }
+        if(qty === null && i > 0 && !consumed[i-1]){
+          const v = tokenToNumber(tokens[i-1]);
+          if(v !== null){ qty = v; consumed[i-1] = true; }
+        }
+        if(qty === null || qty === 0) qty = 1;
+        results.push({item: matchedItem, qty});
+        i = afterIdx;
+      } else {
+        i++;
+      }
+    }
+    return results;
   }
 
   function handleMainTranscript(transcript){
     setStatus('கேட்டது: "' + transcript + '"');
-    const normalized = transcript.replace(/\s+/g," ").trim();
-    let matchedItem = null;
-    let matchLen = 0;
-    for(const it of items){
-      if(normalized.includes(it.name) && it.name.length > matchLen){
-        matchedItem = it; matchLen = it.name.length;
-      }
-    }
-    if(!matchedItem){
+    const found = parseMultipleItems(transcript);
+    if(found.length === 0){
       setStatus('பொருள் கிடைக்கவில்லை. மீண்டும் சொல்லுங்கள் அல்லது பொருளை தட்டவும்.');
       speak("பொருள் புரியவில்லை");
       return;
     }
-    const remainder = normalized.replace(matchedItem.name, " ").split(" ").filter(Boolean);
-    let qty = parseNumberFromTokens(remainder);
-    if(qty === null || qty === 0) qty = 1;
-    addToBill(matchedItem.id, qty);
-    const amt = (matchedItem.price*qty).toFixed(0);
-    setStatus(matchedItem.name + " × " + formatQty(qty) + " — ₹" + amt + " சேர்க்கப்பட்டது");
-    speak(matchedItem.name + " " + formatQty(qty) + ", ரூபாய் " + amt + " சேர்க்கப்பட்டது");
+    const spokenParts = [];
+    const statusParts = [];
+    for(const {item, qty} of found){
+      addToBill(item.id, qty);
+      const amt = (item.price*qty).toFixed(0);
+      spokenParts.push(item.name + " " + formatQty(qty));
+      statusParts.push(item.name + " × " + formatQty(qty) + " (₹" + amt + ")");
+    }
+    setStatus(statusParts.join(", ") + " சேர்க்கப்பட்டது");
+    speak(spokenParts.join(", ") + " சேர்க்கப்பட்டது");
   }
 
   $("micBtn").addEventListener("click", () => {
@@ -600,10 +685,18 @@
       setStatus("இந்த பிரவுசரில் மைக் கிடைக்கவில்லை. Chrome பயன்படுத்தவும்.");
       return;
     }
-    if(listeningTarget){ rec.stop(); return; }
+    if(keepListening){
+      keepListening = false;
+      listeningTarget = null;
+      try{ rec.stop(); }catch(e){}
+      stopListeningUI();
+      setStatus("மைக் நிறுத்தப்பட்டது");
+      return;
+    }
+    keepListening = true;
     listeningTarget = "main";
     $("micBtn").classList.add("listening");
-    setStatus("கேட்கிறேன்...");
+    setStatus("தொடர்ந்து கேட்கிறேன்... பொருட்களை ஒவ்வொன்றாக சொல்லுங்கள். நிறுத்த மீண்டும் தட்டவும்.");
     try{ rec.start(); }catch(e){}
   });
 
@@ -624,6 +717,12 @@
       setStatus("பில் காலியாக உள்ளது");
       return;
     }
+    const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
+    const totalQty = bill.reduce((s,b)=>s+b.qty,0);
+    const itemList = bill.map(b => b.name + " " + formatQty(b.qty)).join(", ");
+    const reviewSpeech = itemList + ". மொத்தம் " + bill.length + " வகை பொருட்கள், " + formatQty(totalQty) + " எண்ணிக்கை. மொத்த தொகை ரூபாய் " + total.toFixed(0);
+    setStatus("சரிபார்க்கவும்: " + itemList + " — மொத்தம் ₹" + total.toFixed(0));
+    speak(reviewSpeech);
     openPaymentSheet();
   });
 
@@ -719,28 +818,31 @@
   });
 
   async function finalizeBill(method, total, received, balance){
+    const itemTypes = bill.length;
+    const totalQtyFinal = bill.reduce((s,b)=>s+b.qty,0);
     const key = todayKey();
     let dayList = [];
     try{
-      const r = await window.storage.get(key);
-      dayList = r ? JSON.parse(r.value) : [];
+      const raw = localStorage.getItem(key);
+      dayList = raw ? JSON.parse(raw) : [];
     }catch(e){ dayList = []; }
     dayList.push({
       time:new Date().toLocaleTimeString("ta-IN",{hour:'2-digit',minute:'2-digit'}),
       total, method, received, balance,
       items: bill.map(b=>({name:b.name, qty:b.qty, price:b.price}))
     });
-    try{ await window.storage.set(key, JSON.stringify(dayList)); }catch(e){}
+    try{ localStorage.setItem(key, JSON.stringify(dayList)); }catch(e){}
 
+    const countPhrase = itemTypes + " வகை பொருட்கள், மொத்தம் " + formatQty(totalQtyFinal) + " எண்ணிக்கை. ";
     if(method === "cash" && balance > 0){
-      speak("மொத்தம் ரூபாய் " + total.toFixed(0) + ". திரும்ப கொடுக்க வேண்டியது ரூபாய் " + balance.toFixed(0));
-      setStatus("✅ திரும்ப கொடுக்க வேண்டியது ₹" + balance.toFixed(0));
+      speak(countPhrase + "தொகை ரூபாய் " + total.toFixed(0) + ". திரும்ப கொடுக்க வேண்டியது ரூபாய் " + balance.toFixed(0));
+      setStatus("✅ " + itemTypes + " பொருட்கள் — திரும்ப கொடுக்க வேண்டியது ₹" + balance.toFixed(0));
     } else if(method === "cash" && balance < 0){
-      speak("இன்னும் ரூபாய் " + Math.abs(balance).toFixed(0) + " தேவை");
+      speak(countPhrase + "இன்னும் ரூபாய் " + Math.abs(balance).toFixed(0) + " தேவை");
       setStatus("⚠️ இன்னும் தேவை ₹" + Math.abs(balance).toFixed(0));
     } else {
-      speak("மொத்தம் ரூபாய் " + total.toFixed(0) + ". பில் முடிந்தது");
-      setStatus("பில் சேமிக்கப்பட்டது ✅ அடுத்த வாடிக்கையாளர்");
+      speak(countPhrase + "தொகை ரூபாய் " + total.toFixed(0) + ". பில் முடிந்தது");
+      setStatus("பில் சேமிக்கப்பட்டது ✅ " + itemTypes + " பொருட்கள், ₹" + total.toFixed(0));
     }
     bill = [];
     renderBill();
@@ -773,40 +875,74 @@
     renderExistingItems();
   });
 
+  let editingItemId = null;
+
   function renderExistingItems(){
     const list = $("existingItemsList");
     if(items.length === 0){
       list.innerHTML = '<div class="divider-note">பொருட்கள் இல்லை</div>';
       return;
     }
-    list.innerHTML = items.map(it => `
+    list.innerHTML = items.map(it => {
+      if(it.id === editingItemId){
+        return `
+        <div class="existing-item-row editing" data-id="${it.id}">
+          <input type="text" class="edit-name" value="${escapeHtml(it.name)}">
+          <input type="number" class="edit-price" inputmode="decimal" value="${it.price}">
+          <div class="row-actions">
+            <button class="mini-btn save-edit-btn" data-id="${it.id}">✔️</button>
+            <button class="mini-btn cancel-edit-btn" data-id="${it.id}">✖️</button>
+          </div>
+        </div>`;
+      }
+      return `
       <div class="existing-item-row">
         <div class="info">${escapeHtml(it.name)} — <b>₹${it.price}</b></div>
         <div class="row-actions">
-          <button class="mini-btn edit" data-id="${it.id}">✏️</button>
-          <button class="mini-btn del" data-id="${it.id}">🗑️</button>
+          <button class="mini-btn edit-btn" data-id="${it.id}">✏️</button>
+          <button class="mini-btn del-btn" data-id="${it.id}">🗑️</button>
         </div>
-      </div>
-    `).join("");
-    list.querySelectorAll(".mini-btn.del").forEach(btn=>{
+      </div>`;
+    }).join("");
+
+    list.querySelectorAll(".del-btn").forEach(btn=>{
       btn.addEventListener("click", async ()=>{
+        if(!confirm("இந்த பொருளை நீக்கவா?")) return;
         items = items.filter(i=>i.id!==btn.dataset.id);
         await saveItems();
         renderItems();
         renderExistingItems();
       });
     });
-    list.querySelectorAll(".mini-btn.edit").forEach(btn=>{
+    list.querySelectorAll(".edit-btn").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        editingItemId = btn.dataset.id;
+        renderExistingItems();
+      });
+    });
+    list.querySelectorAll(".cancel-edit-btn").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        editingItemId = null;
+        renderExistingItems();
+      });
+    });
+    list.querySelectorAll(".save-edit-btn").forEach(btn=>{
       btn.addEventListener("click", async ()=>{
+        const row = btn.closest(".existing-item-row");
         const it = items.find(i=>i.id===btn.dataset.id);
         if(!it) return;
-        const newPrice = prompt("புதிய விலை (₹) — " + it.name, it.price);
-        if(newPrice !== null && !isNaN(parseFloat(newPrice))){
-          it.price = parseFloat(newPrice);
-          await saveItems();
-          renderItems();
-          renderExistingItems();
+        const newName = row.querySelector(".edit-name").value.trim();
+        const newPrice = parseFloat(row.querySelector(".edit-price").value);
+        if(!newName || isNaN(newPrice) || newPrice <= 0){
+          setStatus("பொருள் பெயரும் விலையும் சரியாக இடவும்");
+          return;
         }
+        it.name = newName;
+        it.price = newPrice;
+        editingItemId = null;
+        await saveItems();
+        renderItems();
+        renderExistingItems();
       });
     });
   }
@@ -816,8 +952,8 @@
     const key = todayKey();
     let dayList = [];
     try{
-      const r = await window.storage.get(key);
-      dayList = r ? JSON.parse(r.value) : [];
+      const raw = localStorage.getItem(key);
+      dayList = raw ? JSON.parse(raw) : [];
     }catch(e){ dayList = []; }
     const listEl = $("historyList");
     if(dayList.length === 0){
