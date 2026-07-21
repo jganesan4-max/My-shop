@@ -308,7 +308,11 @@
     </div>
     <div class="field-row" style="margin-top:8px;">
       <input type="number" id="qaPrice" inputmode="decimal" placeholder="விலை ₹">
+      <button class="mic-mini" id="qaPriceMic">🎙️</button>
+    </div>
+    <div class="field-row" style="margin-top:8px;">
       <input type="number" id="qaQty" inputmode="decimal" placeholder="எண்ணிக்கை" value="1">
+      <button class="mic-mini" id="qaQtyMic">🎙️</button>
     </div>
     <button class="save-btn" id="qaAddBtn" style="margin-top:8px;">+ பில்லில் சேர்</button>
   </div>
@@ -400,6 +404,10 @@
     <div style="display:flex;gap:10px;margin-top:16px;">
       <button class="btn btn-history" id="receiptPrintBtn" style="flex:1;">🖨️ பிரிண்ட்</button>
       <button class="btn btn-history" id="receiptRepeatBtn" style="flex:1;">🔁 மீண்டும்</button>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:10px;">
+      <button class="btn btn-history" id="sendWhatsappBtn" style="flex:1;font-size:14px;">💬 WhatsApp</button>
+      <button class="btn btn-history" id="sendSmsBtn" style="flex:1;font-size:14px;">✉️ SMS</button>
     </div>
     <button class="save-btn" id="receiptCloseBtn" style="margin-top:10px;">அடுத்த வாடிக்கையாளர் ➜</button>
   </div>
@@ -643,6 +651,14 @@
         $("newItemName").value = transcript;
       } else if(listeningTarget === "qaName"){
         $("qaName").value = transcript;
+      } else if(listeningTarget === "qaPrice"){
+        const v = extractAmountFromTranscript(transcript);
+        if(v !== null) $("qaPrice").value = v;
+        else setStatus('விலை புரியவில்லை. மீண்டும் சொல்லுங்கள்.');
+      } else if(listeningTarget === "qaQty"){
+        const v = extractAmountFromTranscript(transcript);
+        if(v !== null) $("qaQty").value = v;
+        else setStatus('எண்ணிக்கை புரியவில்லை. மீண்டும் சொல்லுங்கள்.');
       } else if(listeningTarget === "payment"){
         handlePaymentTranscript(transcript);
       }
@@ -682,6 +698,10 @@
     $("qaMic").classList.remove("listening");
     const payMic = document.getElementById("payMic");
     if(payMic) payMic.classList.remove("listening");
+    const qaPriceMic = document.getElementById("qaPriceMic");
+    if(qaPriceMic) qaPriceMic.classList.remove("listening");
+    const qaQtyMic = document.getElementById("qaQtyMic");
+    if(qaQtyMic) qaQtyMic.classList.remove("listening");
     listeningTarget = null;
   }
 
@@ -843,6 +863,24 @@
     if(listeningTarget){ rec.stop(); return; }
     listeningTarget = "qaName";
     $("qaMic").classList.add("listening");
+    try{ rec.start(); }catch(e){}
+  });
+
+  $("qaPriceMic").addEventListener("click", () => {
+    const rec = ensureRecognition();
+    if(!rec) return;
+    if(listeningTarget){ rec.stop(); return; }
+    listeningTarget = "qaPrice";
+    $("qaPriceMic").classList.add("listening");
+    try{ rec.start(); }catch(e){}
+  });
+
+  $("qaQtyMic").addEventListener("click", () => {
+    const rec = ensureRecognition();
+    if(!rec) return;
+    if(listeningTarget){ rec.stop(); return; }
+    listeningTarget = "qaQty";
+    $("qaQtyMic").classList.add("listening");
     try{ rec.start(); }catch(e){}
   });
 
@@ -1057,11 +1095,19 @@
   }
 
   $("receiptRepeatBtn").addEventListener("click", () => {
-    if(!lastFinishedItems || lastFinishedItems.length === 0) return;
-    bill = lastFinishedItems.map(it => ({itemId:null, name:it.name, price:it.price, qty:it.qty}));
+    let itemsToRepeat = lastFinishedItems;
+    if(!itemsToRepeat || itemsToRepeat.length === 0){
+      const dayList = getTodayList();
+      if(dayList.length > 0) itemsToRepeat = dayList[dayList.length - 1].items;
+    }
+    if(!itemsToRepeat || itemsToRepeat.length === 0){
+      setStatus("மீண்டும் ஏற்ற பில் எதுவும் இல்லை");
+      return;
+    }
+    bill = itemsToRepeat.map(it => ({itemId:null, name:it.name, price:it.price, qty:it.qty}));
     renderBill();
     $("receiptOverlay").classList.remove("show");
-    setStatus("கடைசி பில் மீண்டும் ஏற்றப்பட்டது");
+    setStatus("கடைசி பில் மீண்டும் ஏற்றப்பட்டது (" + bill.length + " பொருட்கள்)");
     speak("கடைசி பில் மீண்டும் ஏற்றப்பட்டது");
   });
 
@@ -1093,6 +1139,44 @@
     $("printArea").innerHTML = html;
     window.print();
   }
+
+  function buildReceiptText(receipt){
+    const methodLabel = receipt.method === "cash" ? "Cash" : "Bank / UPI";
+    let lines = [];
+    lines.push(shopName);
+    lines.push("பில் எண் #" + receipt.billNo + " - " + receipt.time);
+    lines.push("-----------------------------");
+    receipt.items.forEach(it => {
+      lines.push(it.name + " x" + formatQty(it.qty) + " - ₹" + (it.price*it.qty).toFixed(0));
+    });
+    lines.push("-----------------------------");
+    lines.push("மொத்தம்: ₹" + receipt.total.toFixed(0));
+    lines.push(methodLabel);
+    if(receipt.method === "cash"){
+      lines.push("பெற்றது: ₹" + receipt.received.toFixed(0));
+      lines.push((receipt.balance>=0?"மீதம் கொடுக்கப்பட்டது":"இன்னும் தேவை") + ": ₹" + Math.abs(receipt.balance).toFixed(0));
+    }
+    lines.push("நன்றி! Thank you 🙏");
+    return lines.join("\n");
+  }
+
+  function getCurrentReceipt(){
+    try{ return JSON.parse($("receiptOverlay").dataset.current || "{}"); }catch(e){ return {}; }
+  }
+
+  $("sendWhatsappBtn").addEventListener("click", () => {
+    const receipt = getCurrentReceipt();
+    if(!receipt.items) return;
+    const text = buildReceiptText(receipt);
+    window.open("https://wa.me/?text=" + encodeURIComponent(text), "_blank");
+  });
+
+  $("sendSmsBtn").addEventListener("click", () => {
+    const receipt = getCurrentReceipt();
+    if(!receipt.items) return;
+    const text = buildReceiptText(receipt);
+    window.location.href = "sms:?body=" + encodeURIComponent(text);
+  });
 
   $("settingsBtn").addEventListener("click", () => {
     renderExistingItems();
