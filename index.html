@@ -125,6 +125,10 @@
 
   .empty-items{margin:10px 16px;color:var(--chalk-dim);font-size:15px;text-align:center;padding:20px;border:1px dashed rgba(245,241,227,0.25);border-radius:var(--radius);}
 
+  .quickadd-box{background:var(--board-light);border-radius:var(--radius);padding:12px;margin:0 16px;border:1px dashed rgba(245,241,227,0.3);}
+  .quickadd-box .field-row{gap:8px;}
+  .quickadd-box input{font-size:15px;}
+
   /* Bill list */
   .bill-box{margin:10px 16px 0;background:rgba(0,0,0,0.15);border-radius:var(--radius);padding:6px 4px;min-height:60px;}
   .bill-row{
@@ -255,6 +259,21 @@
     border-radius:12px;padding:15px;font-weight:700;font-size:18px;font-family:'Baloo Thambi 2',sans-serif;
   }
   .confirm-pay-btn:disabled{opacity:0.4;}
+
+  .receipt-row{display:flex;justify-content:space-between;padding:8px 2px;border-bottom:1px dashed rgba(245,241,227,0.15);font-size:15px;}
+  .receipt-row.total{font-family:'Baloo Thambi 2',sans-serif;font-weight:800;font-size:20px;color:var(--gold);border-bottom:none;padding-top:12px;}
+  .receipt-billno{text-align:center;color:var(--chalk-dim);font-size:14px;margin-bottom:8px;}
+
+  @media print{
+    body *{visibility:hidden;}
+    #printArea, #printArea *{visibility:visible;}
+    #printArea{display:block !important;position:absolute;top:0;left:0;width:100%;padding:10px;color:#000;background:#fff;font-family:'Noto Sans Tamil',sans-serif;}
+    #printArea h2{margin:0 0 4px;font-size:18px;text-align:center;}
+    #printArea .pr-line{border-top:1px dashed #000;margin:6px 0;}
+    #printArea table{width:100%;border-collapse:collapse;font-size:13px;}
+    #printArea td{padding:3px 0;}
+    #printArea .pr-total{font-weight:bold;font-size:15px;}
+  }
 </style>
 </head>
 <body>
@@ -280,6 +299,19 @@
 
   <div class="section-title">பொருட்கள் (தட்டவும்)</div>
   <div class="items-grid" id="itemsGrid"></div>
+
+  <div class="section-title">பட்டியலில் இல்லாத பொருள்</div>
+  <div class="quickadd-box">
+    <div class="field-row">
+      <input type="text" id="qaName" placeholder="பொருள் பெயர் (எ.கா. ஷாம்பு)">
+      <button class="mic-mini" id="qaMic">🎙️</button>
+    </div>
+    <div class="field-row" style="margin-top:8px;">
+      <input type="number" id="qaPrice" inputmode="decimal" placeholder="விலை ₹">
+      <input type="number" id="qaQty" inputmode="decimal" placeholder="எண்ணிக்கை" value="1">
+    </div>
+    <button class="save-btn" id="qaAddBtn" style="margin-top:8px;">+ பில்லில் சேர்</button>
+  </div>
 
   <div class="section-title">இந்த பில்</div>
   <div class="bill-box" id="billBox"></div>
@@ -319,9 +351,10 @@
 <div class="overlay" id="historyOverlay">
   <div class="sheet">
     <div class="sheet-handle"></div>
-    <div class="sheet-title">இன்றைய விற்பனை <button class="icon-btn" id="closeHistory">✕</button></div>
+    <div class="sheet-title">இன்றைய விற்பனை (24 மணி நேர அறிக்கை) <button class="icon-btn" id="closeHistory">✕</button></div>
     <div id="historyList"></div>
     <div class="history-day-total" id="historyDayTotal"></div>
+    <button class="save-btn" id="downloadCsvBtn" style="margin-top:14px;">⬇️ Excel-ஆக பதிவிறக்கம் (CSV)</button>
   </div>
 </div>
 
@@ -343,7 +376,10 @@
 
     <div class="cash-panel" id="cashPanel">
       <div class="field-label">பெறப்பட்ட தொகை (₹)</div>
-      <input type="number" id="cashReceived" inputmode="decimal" placeholder="எ.கா. 200">
+      <div class="field-row">
+        <input type="number" id="cashReceived" inputmode="decimal" placeholder="எ.கா. 200">
+        <button class="mic-mini" id="payMic">🎙️</button>
+      </div>
       <div class="denom-row" id="denomRow"></div>
       <div class="balance-panel" id="balancePanel" style="display:none;">
         <div class="balance-label" id="balanceLabel">திரும்ப கொடுக்க வேண்டியது</div>
@@ -359,7 +395,24 @@
   </div>
 </div>
 
+<!-- Receipt sheet (shown after payment is confirmed) -->
+<div class="overlay" id="receiptOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">பில் முடிந்தது ✅</div>
+    <div id="receiptSummary"></div>
+    <div style="display:flex;gap:10px;margin-top:16px;">
+      <button class="btn btn-history" id="receiptPrintBtn" style="flex:1;">🖨️ பிரிண்ட்</button>
+      <button class="btn btn-history" id="receiptRepeatBtn" style="flex:1;">🔁 மீண்டும்</button>
+    </div>
+    <button class="save-btn" id="receiptCloseBtn" style="margin-top:10px;">அடுத்த வாடிக்கையாளர் ➜</button>
+  </div>
+</div>
+
+<div id="printArea" style="display:none;"></div>
+
 <script>
+
 (function(){
   const STORAGE_KEY_ITEMS = "kadai:items";
   const STORAGE_KEY_SHOPNAME = "kadai:shopname";
@@ -415,14 +468,36 @@
     "இரண்டரை":2.5,"ரெண்டரை":2.5,
     "மூன்றரை":3.5,"மூணரை":3.5,
     "நான்கரை":4.5,"நாலரை":4.5,
-    "ஐந்தரை":5.5,"அஞ்சரை":5.5
+    "ஐந்தரை":5.5,"அஞ்சரை":5.5,
+    "இருநூறு":200,
+    "முந்நூறு":300,"முன்னூறு":300,
+    "நானூறு":400,
+    "ஐநூறு":500,"ஐந்நூறு":500,
+    "அறுநூறு":600,
+    "எழுநூறு":700,
+    "எண்ணூறு":800,
+    "தொள்ளாயிரம்":900,
+    "ஆயிரம்":1000,
+    "இரண்டாயிரம்":2000,
+    "ஐயாயிரம்":5000
   };
 
+  function extractAmountFromTranscript(transcript){
+    const digitMatch = transcript.replace(/[^\d.]+/g, " ").trim().match(/\d+(\.\d+)?/);
+    if(digitMatch) return parseFloat(digitMatch[0]);
+    const tokens = transcript.replace(/\s+/g," ").trim().split(" ");
+    for(const t of tokens){
+      const v = tokenToNumber(t);
+      if(v !== null && v > 0) return v;
+    }
+    return null;
+  }
+
   let items = [];
-  let bill = []; // {itemId, name, price, qty}
+  let bill = [];
   let shopName = "என் கடை";
   let recognition = null;
-  let listeningTarget = null; // 'main' or 'newItem'
+  let listeningTarget = null;
 
   const $ = (id) => document.getElementById(id);
 
@@ -484,6 +559,13 @@
     renderBill();
   }
 
+  function addCustomToBill(name, price, qty){
+    const existing = bill.find(b => b.itemId === null && b.name === name && b.price === price);
+    if(existing){ existing.qty += qty; }
+    else{ bill.push({itemId:null, name, price, qty}); }
+    renderBill();
+  }
+
   function removeBillRow(index){
     bill.splice(index,1);
     renderBill();
@@ -537,9 +619,8 @@
     return (q % 1 === 0) ? String(q) : String(q);
   }
 
-  // ---- Speech recognition setup ----
   const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let keepListening = false; // true while in continuous main-listening mode
+  let keepListening = false;
   function ensureRecognition(){
     if(!SpeechRecognitionCtor) return null;
     if(recognition) return recognition;
@@ -553,11 +634,14 @@
         handleMainTranscript(transcript);
       } else if(listeningTarget === "newItem"){
         $("newItemName").value = transcript;
+      } else if(listeningTarget === "qaName"){
+        $("qaName").value = transcript;
+      } else if(listeningTarget === "payment"){
+        handlePaymentTranscript(transcript);
       }
     };
     recognition.onerror = (e) => {
       if(e.error === "no-speech" && keepListening && listeningTarget === "main"){
-        // silence during continuous listening - just keep going, onend will restart
         return;
       }
       const reasons = {
@@ -573,7 +657,6 @@
     };
     recognition.onend = () => {
       if(keepListening && listeningTarget === "main"){
-        // continuous mode: automatically restart listening for the next item
         setTimeout(() => {
           if(keepListening && listeningTarget === "main"){
             try{ recognition.start(); }catch(e){}
@@ -589,6 +672,9 @@
   function stopListeningUI(){
     $("micBtn").classList.remove("listening");
     $("newItemMic").classList.remove("listening");
+    $("qaMic").classList.remove("listening");
+    const payMic = document.getElementById("payMic");
+    if(payMic) payMic.classList.remove("listening");
     listeningTarget = null;
   }
 
@@ -613,15 +699,13 @@
     return null;
   }
 
-  // Parses a transcript that may contain several "item + quantity" pairs,
-  // e.g. "அரிசி மூன்று சர்க்கரை இரண்டு பால் பாக்கெட் ஒன்று"
   function parseMultipleItems(transcript){
     const normalized = transcript.replace(/\s+/g," ").trim();
     if(!normalized) return [];
     const tokens = normalized.split(" ");
     const itemTokenLists = items
       .map(it => ({item: it, toks: it.name.split(" ")}))
-      .sort((a,b) => b.toks.length - a.toks.length); // match longer item names first
+      .sort((a,b) => b.toks.length - a.toks.length);
 
     const consumed = new Array(tokens.length).fill(false);
     const results = [];
@@ -659,11 +743,43 @@
     return results;
   }
 
+  function parseAdHocItem(transcript){
+    const normalized = transcript.replace(/\s+/g," ").trim();
+    const tokens = normalized.split(" ");
+    const priceIdx = tokens.indexOf("விலை");
+    if(priceIdx === -1 || priceIdx === 0) return null;
+    const name = tokens.slice(0, priceIdx).join(" ");
+    const qtyIdx = tokens.indexOf("எண்ணிக்கை");
+    let priceTokens, qtyTokens;
+    if(qtyIdx !== -1 && qtyIdx > priceIdx){
+      priceTokens = tokens.slice(priceIdx+1, qtyIdx);
+      qtyTokens = tokens.slice(qtyIdx+1);
+    } else {
+      priceTokens = tokens.slice(priceIdx+1);
+      qtyTokens = [];
+    }
+    let price = null;
+    for(const t of priceTokens){ const v = tokenToNumber(t); if(v !== null){ price = v; break; } }
+    let qty = null;
+    for(const t of qtyTokens){ const v = tokenToNumber(t); if(v !== null){ qty = v; break; } }
+    if(qty === null) qty = 1;
+    if(!name || price === null || price <= 0) return null;
+    return {name, price, qty};
+  }
+
   function handleMainTranscript(transcript){
     setStatus('கேட்டது: "' + transcript + '"');
     const found = parseMultipleItems(transcript);
     if(found.length === 0){
-      setStatus('பொருள் கிடைக்கவில்லை. மீண்டும் சொல்லுங்கள் அல்லது பொருளை தட்டவும்.');
+      const adHoc = parseAdHocItem(transcript);
+      if(adHoc){
+        addCustomToBill(adHoc.name, adHoc.price, adHoc.qty);
+        const amt = (adHoc.price*adHoc.qty).toFixed(0);
+        setStatus(adHoc.name + " × " + formatQty(adHoc.qty) + " (₹" + amt + ") — புதிய பொருள் சேர்க்கப்பட்டது");
+        speak(adHoc.name + " " + formatQty(adHoc.qty) + ", ரூபாய் " + amt + " சேர்க்கப்பட்டது");
+        return;
+      }
+      setStatus('பொருள் கிடைக்கவில்லை. "விலை" மற்றும் "எண்ணிக்கை" சொல்லி முயற்சிக்கவும், அல்லது கீழே உள்ள படிவத்தில் சேர்க்கவும்.');
       speak("பொருள் புரியவில்லை");
       return;
     }
@@ -709,8 +825,32 @@
     try{ rec.start(); }catch(e){}
   });
 
-  // ---- Finish bill -> opens payment sheet ----
-  let payMethod = null; // 'cash' or 'bank'
+  $("qaMic").addEventListener("click", () => {
+    const rec = ensureRecognition();
+    if(!rec) return;
+    if(listeningTarget){ rec.stop(); return; }
+    listeningTarget = "qaName";
+    $("qaMic").classList.add("listening");
+    try{ rec.start(); }catch(e){}
+  });
+
+  $("qaAddBtn").addEventListener("click", () => {
+    const name = $("qaName").value.trim();
+    const price = parseFloat($("qaPrice").value);
+    let qty = parseFloat($("qaQty").value);
+    if(isNaN(qty) || qty <= 0) qty = 1;
+    if(!name || isNaN(price) || price <= 0){
+      setStatus("பொருள் பெயரும் விலையும் சரியாக இடவும்");
+      return;
+    }
+    addCustomToBill(name, price, qty);
+    setStatus(name + " × " + formatQty(qty) + " (₹" + (price*qty).toFixed(0) + ") பில்லில் சேர்க்கப்பட்டது");
+    $("qaName").value = "";
+    $("qaPrice").value = "";
+    $("qaQty").value = "1";
+  });
+
+  let payMethod = null;
 
   $("finishBtn").addEventListener("click", () => {
     if(bill.length === 0){
@@ -749,6 +889,41 @@
     });
 
     $("paymentOverlay").classList.add("show");
+    speak("பில் தொகை ரூபாய் " + total.toFixed(0) + ". எவ்வளவு பணம் பெற்றீர்கள்?");
+  }
+
+  $("payMic").addEventListener("click", () => {
+    const rec = ensureRecognition();
+    if(!rec) return;
+    if(listeningTarget){ rec.stop(); return; }
+    listeningTarget = "payment";
+    $("payMic").classList.add("listening");
+    try{ rec.start(); }catch(e){}
+  });
+
+  function handlePaymentTranscript(transcript){
+    const amt = extractAmountFromTranscript(transcript);
+    const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
+    if(amt === null || amt <= 0){
+      setStatus('தொகை புரியவில்லை. மீண்டும் சொல்லுங்கள் அல்லது தட்டச்சு செய்யவும்.');
+      speak("தொகை புரியவில்லை, மீண்டும் சொல்லுங்கள்");
+      return;
+    }
+    payMethod = "cash";
+    $("payCashBtn").classList.add("active");
+    $("payBankBtn").classList.remove("active");
+    $("cashPanel").classList.add("show");
+    $("bankPanel").classList.remove("show");
+    $("cashReceived").value = amt;
+    updateBalanceDisplay();
+    const diff = amt - total;
+    if(diff >= 0){
+      speak("பில் தொகை " + total.toFixed(0) + ". நீங்கள் " + amt.toFixed(0) + " கொடுத்தீர்கள். மீதம் " + diff.toFixed(0) + " கொடுக்கவும்.");
+      setStatus("மீதம் ₹" + diff.toFixed(0) + " கொடுக்கவும்");
+    } else {
+      speak("பில் தொகை " + total.toFixed(0) + ". நீங்கள் " + amt.toFixed(0) + " கொடுத்தீர்கள். இன்னும் ரூபாய் " + Math.abs(diff).toFixed(0) + " தேவை.");
+      setStatus("இன்னும் தேவை ₹" + Math.abs(diff).toFixed(0));
+    }
   }
 
   $("payCashBtn").addEventListener("click", () => {
@@ -807,15 +982,18 @@
     } else if(payMethod === "bank"){
       received = total; balance = 0;
     } else {
-      return; // no method chosen yet
+      return;
     }
-    await finalizeBill(payMethod, total, received, balance);
+    const receipt = await finalizeBill(payMethod, total, received, balance);
     $("paymentOverlay").classList.remove("show");
+    openReceiptSheet(receipt);
   });
 
   $("closePayment").addEventListener("click", () => {
     $("paymentOverlay").classList.remove("show");
   });
+
+  let lastFinishedItems = null;
 
   async function finalizeBill(method, total, received, balance){
     const itemTypes = bill.length;
@@ -826,11 +1004,10 @@
       const raw = localStorage.getItem(key);
       dayList = raw ? JSON.parse(raw) : [];
     }catch(e){ dayList = []; }
-    dayList.push({
-      time:new Date().toLocaleTimeString("ta-IN",{hour:'2-digit',minute:'2-digit'}),
-      total, method, received, balance,
-      items: bill.map(b=>({name:b.name, qty:b.qty, price:b.price}))
-    });
+    const billNo = dayList.length + 1;
+    const itemsSnapshot = bill.map(b=>({name:b.name, qty:b.qty, price:b.price}));
+    const time = new Date().toLocaleTimeString("ta-IN",{hour:'2-digit',minute:'2-digit'});
+    dayList.push({ billNo, time, total, method, received, balance, items: itemsSnapshot });
     try{ localStorage.setItem(key, JSON.stringify(dayList)); }catch(e){}
 
     const countPhrase = itemTypes + " வகை பொருட்கள், மொத்தம் " + formatQty(totalQtyFinal) + " எண்ணிக்கை. ";
@@ -844,11 +1021,67 @@
       speak(countPhrase + "தொகை ரூபாய் " + total.toFixed(0) + ". பில் முடிந்தது");
       setStatus("பில் சேமிக்கப்பட்டது ✅ " + itemTypes + " பொருட்கள், ₹" + total.toFixed(0));
     }
+    lastFinishedItems = itemsSnapshot;
     bill = [];
     renderBill();
+    return { billNo, time, total, method, received, balance, items: itemsSnapshot };
   }
 
-  // ---- Settings sheet ----
+  function openReceiptSheet(receipt){
+    const methodLabel = receipt.method === "cash" ? "💵 பணம் (Cash)" : "🏦 வங்கி / UPI";
+    let rows = `<div class="receipt-billno">பில் எண் ${receipt.billNo} • ${receipt.time}</div>`;
+    rows += receipt.items.map(it => `
+      <div class="receipt-row"><span>${escapeHtml(it.name)} × ${formatQty(it.qty)}</span><span>₹${(it.price*it.qty).toFixed(0)}</span></div>
+    `).join("");
+    rows += `<div class="receipt-row total"><span>மொத்தம்</span><span>₹${receipt.total.toFixed(0)}</span></div>`;
+    rows += `<div class="receipt-row"><span>${methodLabel}</span><span></span></div>`;
+    if(receipt.method === "cash"){
+      rows += `<div class="receipt-row"><span>பெற்றது</span><span>₹${receipt.received.toFixed(0)}</span></div>`;
+      rows += `<div class="receipt-row"><span>${receipt.balance>=0?"மீதம் கொடுக்க வேண்டியது":"இன்னும் தேவை"}</span><span>₹${Math.abs(receipt.balance).toFixed(0)}</span></div>`;
+    }
+    $("receiptSummary").innerHTML = rows;
+    $("receiptOverlay").dataset.current = JSON.stringify(receipt);
+    $("receiptOverlay").classList.add("show");
+  }
+
+  $("receiptRepeatBtn").addEventListener("click", () => {
+    if(!lastFinishedItems || lastFinishedItems.length === 0) return;
+    bill = lastFinishedItems.map(it => ({itemId:null, name:it.name, price:it.price, qty:it.qty}));
+    renderBill();
+    $("receiptOverlay").classList.remove("show");
+    setStatus("கடைசி பில் மீண்டும் ஏற்றப்பட்டது");
+    speak("கடைசி பில் மீண்டும் ஏற்றப்பட்டது");
+  });
+
+  $("receiptCloseBtn").addEventListener("click", () => {
+    $("receiptOverlay").classList.remove("show");
+  });
+
+  $("receiptPrintBtn").addEventListener("click", () => {
+    const receipt = JSON.parse($("receiptOverlay").dataset.current || "{}");
+    if(!receipt.items) return;
+    printReceipt(receipt);
+  });
+
+  function printReceipt(receipt){
+    const methodLabel = receipt.method === "cash" ? "Cash" : "Bank / UPI";
+    let html = `<h2>${escapeHtml(shopName)}</h2>`;
+    html += `<div style="text-align:center;font-size:12px;">பில் எண் ${receipt.billNo} • ${new Date().toLocaleDateString("ta-IN")} ${receipt.time}</div>`;
+    html += `<div class="pr-line"></div><table>`;
+    receipt.items.forEach(it => {
+      html += `<tr><td>${escapeHtml(it.name)} x${formatQty(it.qty)}</td><td style="text-align:right;">₹${(it.price*it.qty).toFixed(0)}</td></tr>`;
+    });
+    html += `</table><div class="pr-line"></div>`;
+    html += `<table><tr class="pr-total"><td>மொத்தம்</td><td style="text-align:right;">₹${receipt.total.toFixed(0)}</td></tr></table>`;
+    html += `<div style="font-size:12px;margin-top:6px;">${methodLabel}`;
+    if(receipt.method === "cash"){
+      html += ` • பெற்றது ₹${receipt.received.toFixed(0)} • ${receipt.balance>=0?"மீதம்":"தேவை"} ₹${Math.abs(receipt.balance).toFixed(0)}`;
+    }
+    html += `</div><div class="pr-line"></div><div style="text-align:center;font-size:12px;">நன்றி! Thank you</div>`;
+    $("printArea").innerHTML = html;
+    window.print();
+  }
+
   $("settingsBtn").addEventListener("click", () => {
     renderExistingItems();
     $("settingsOverlay").classList.add("show");
@@ -947,25 +1180,19 @@
     });
   }
 
-  // ---- History sheet ----
   $("historyBtn").addEventListener("click", async () => {
-    const key = todayKey();
-    let dayList = [];
-    try{
-      const raw = localStorage.getItem(key);
-      dayList = raw ? JSON.parse(raw) : [];
-    }catch(e){ dayList = []; }
     const listEl = $("historyList");
+    const dayList = getTodayList();
     if(dayList.length === 0){
       listEl.innerHTML = '<div class="divider-note">இன்று இன்னும் பில் இல்லை</div>';
       $("historyDayTotal").textContent = "";
     } else {
       listEl.innerHTML = dayList.map(d => {
         const tag = d.method === "cash" ? "💵 Cash" : (d.method === "bank" ? "🏦 Bank" : "");
-        return `<div class="history-row"><span>${d.time} <span class="pay-tag">${tag}</span></span><span>₹${d.total.toFixed(0)}</span></div>`;
+        return `<div class="history-row"><span>#${d.billNo || ""} ${d.time} <span class="pay-tag">${tag}</span></span><span>₹${d.total.toFixed(0)}</span></div>`;
       }).join("");
       const dayTotal = dayList.reduce((s,d)=>s+d.total,0);
-      $("historyDayTotal").textContent = "இன்று மொத்தம்: ₹" + dayTotal.toFixed(0);
+      $("historyDayTotal").textContent = "இன்று மொத்தம் (" + dayList.length + " பில்): ₹" + dayTotal.toFixed(0);
     }
     $("historyOverlay").classList.add("show");
   });
@@ -973,7 +1200,47 @@
     $("historyOverlay").classList.remove("show");
   });
 
-  [$("settingsOverlay"), $("historyOverlay"), $("paymentOverlay")].forEach(ov => {
+  function getTodayList(){
+    try{
+      const raw = localStorage.getItem(todayKey());
+      return raw ? JSON.parse(raw) : [];
+    }catch(e){ return []; }
+  }
+
+  function csvEscape(v){
+    const s = String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+  }
+
+  $("downloadCsvBtn").addEventListener("click", () => {
+    const dayList = getTodayList();
+    if(dayList.length === 0){ setStatus("இன்று இன்னும் பில் இல்லை"); return; }
+    const header = ["Bill No","Time","Payment","Items","Total","Received","Balance"];
+    const rows = dayList.map(d => [
+      d.billNo || "",
+      d.time,
+      d.method === "cash" ? "Cash" : "Bank/UPI",
+      d.items.map(it => it.name + " x" + it.qty).join(" | "),
+      d.total.toFixed(0),
+      (d.received||0).toFixed(0),
+      (d.balance||0).toFixed(0)
+    ]);
+    const dayTotal = dayList.reduce((s,d)=>s+d.total,0);
+    rows.push(["", "", "", "TOTAL", dayTotal.toFixed(0), "", ""]);
+    const csv = [header, ...rows].map(r => r.map(csvEscape).join(",")).join("\n");
+    const blob = new Blob(["\uFEFF" + csv], {type:"text/csv;charset=utf-8;"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const dateStr = new Date().toISOString().slice(0,10);
+    a.href = url;
+    a.download = "sales-report-" + dateStr + ".csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+
+  [$("settingsOverlay"), $("historyOverlay"), $("paymentOverlay"), $("receiptOverlay")].forEach(ov => {
     ov.addEventListener("click", (e)=>{ if(e.target === ov) ov.classList.remove("show"); });
   });
 
