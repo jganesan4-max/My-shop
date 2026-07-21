@@ -36,7 +36,6 @@
   }
   .app{max-width:520px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;padding-bottom:110px;}
 
-  /* Header */
   header{
     position:sticky;top:0;z-index:20;
     background:var(--board);
@@ -56,9 +55,7 @@
     flex-shrink:0;
   }
   .icon-btn:active{background:var(--board-lighter);}
-  .total-board{
-    margin-top:10px;text-align:center;
-  }
+  .total-board{margin-top:10px;text-align:center;}
   .total-label{font-size:14px;color:var(--chalk-dim);letter-spacing:0.5px;}
   .total-amount{
     font-family:'Baloo Thambi 2',sans-serif;
@@ -67,7 +64,6 @@
     text-shadow:0 0 18px rgba(242,176,59,0.25);
   }
 
-  /* Mic */
   .mic-wrap{display:flex;flex-direction:column;align-items:center;padding:18px 16px 6px;gap:10px;}
   .mic-btn{
     width:96px;height:96px;border-radius:50%;
@@ -94,15 +90,12 @@
     margin:0 16px;min-height:20px;
   }
 
-  /* Items grid */
   .section-title{
     font-family:'Baloo Thambi 2',sans-serif;
     font-size:17px;font-weight:600;color:var(--chalk-dim);
     margin:18px 16px 8px;
   }
-  .items-grid{
-    display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px;
-  }
+  .items-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px;}
   .item-card{
     background:var(--board-light);border:1px solid rgba(245,241,227,0.12);
     border-radius:var(--radius);padding:12px;
@@ -129,7 +122,6 @@
   .quickadd-box .field-row{gap:8px;}
   .quickadd-box input{font-size:15px;}
 
-  /* Bill list */
   .bill-box{margin:10px 16px 0;background:rgba(0,0,0,0.15);border-radius:var(--radius);padding:6px 4px;min-height:60px;}
   .bill-row{
     display:flex;align-items:center;justify-content:space-between;
@@ -154,7 +146,6 @@
   }
   .bill-empty{padding:18px;text-align:center;color:var(--chalk-dim);font-size:15px;}
 
-  /* Bottom bar */
   .bottom-bar{
     position:fixed;left:0;right:0;bottom:0;z-index:20;
     background:var(--board);border-top:2px dashed rgba(245,241,227,0.25);
@@ -172,7 +163,6 @@
   .btn-history{background:var(--board-light);color:var(--chalk);flex:0 0 56px;box-shadow:0 4px 0 rgba(0,0,0,0.3);border:1px solid rgba(245,241,227,0.15);}
   .btn-history:active{transform:translateY(3px);}
 
-  /* Modal */
   .overlay{
     position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:50;
     display:none;align-items:flex-end;justify-content:center;
@@ -222,10 +212,7 @@
 
   .item-count{font-size:14px;color:var(--chalk-dim);margin-top:2px;}
 
-  /* Payment sheet */
-  .pay-total-display{
-    text-align:center;padding:10px 0 6px;
-  }
+  .pay-total-display{text-align:center;padding:10px 0 6px;}
   .pay-total-label{font-size:14px;color:var(--chalk-dim);}
   .pay-total-amount{font-family:'Baloo Thambi 2',sans-serif;font-weight:800;font-size:38px;color:var(--gold);}
   .pay-method-row{display:flex;gap:10px;margin:14px 0 4px;}
@@ -244,10 +231,7 @@
     border-radius:10px;padding:10px 14px;font-size:15px;font-weight:600;
   }
   .denom-btn:active{background:var(--board-lighter);}
-  .balance-panel{
-    margin-top:14px;border-radius:14px;padding:14px;text-align:center;
-    background:rgba(0,0,0,0.15);
-  }
+  .balance-panel{margin-top:14px;border-radius:14px;padding:14px;text-align:center;background:rgba(0,0,0,0.15);}
   .balance-label{font-size:14px;color:var(--chalk-dim);}
   .balance-amount{font-family:'Baloo Thambi 2',sans-serif;font-weight:800;font-size:32px;margin-top:2px;}
   .balance-amount.give{color:var(--ok);}
@@ -273,6 +257,22 @@
     #printArea table{width:100%;border-collapse:collapse;font-size:13px;}
     #printArea td{padding:3px 0;}
     #printArea .pr-total{font-weight:bold;font-size:15px;}
+  }
+
+  .lock-overlay{
+    position:fixed;inset:0;background:var(--board);z-index:999;
+    display:none;align-items:center;justify-content:center;padding:24px;
+  }
+  .lock-overlay.show{display:flex;}
+  .lock-box{max-width:400px;width:100%;text-align:center;}
+  .lock-box .lock-emoji{font-size:52px;margin-bottom:10px;}
+  .lock-box h2{font-family:'Baloo Thambi 2',sans-serif;color:var(--gold);font-size:22px;margin:0 0 10px;}
+  .lock-box p{color:var(--chalk-dim);font-size:15px;line-height:1.6;margin:0 0 16px;}
+  .lock-box input{text-align:center;letter-spacing:2px;font-size:20px;margin-bottom:10px;}
+  .lock-error{color:var(--danger);font-size:14px;min-height:20px;margin-bottom:6px;}
+  .trial-banner{
+    background:rgba(242,176,59,0.15);color:var(--gold);text-align:center;
+    font-size:13px;padding:6px 10px;border-bottom:1px dashed rgba(242,176,59,0.3);
   }
 </style>
 </head>
@@ -322,7 +322,6 @@
   </div>
 </div>
 
-<!-- Settings sheet -->
 <div class="overlay" id="settingsOverlay">
   <div class="sheet">
     <div class="sheet-handle"></div>
@@ -347,7 +346,6 @@
   </div>
 </div>
 
-<!-- History sheet -->
 <div class="overlay" id="historyOverlay">
   <div class="sheet">
     <div class="sheet-handle"></div>
@@ -358,7 +356,6 @@
   </div>
 </div>
 
-<!-- Payment sheet -->
 <div class="overlay" id="paymentOverlay">
   <div class="sheet">
     <div class="sheet-handle"></div>
@@ -395,7 +392,6 @@
   </div>
 </div>
 
-<!-- Receipt sheet (shown after payment is confirmed) -->
 <div class="overlay" id="receiptOverlay">
   <div class="sheet">
     <div class="sheet-handle"></div>
@@ -410,6 +406,17 @@
 </div>
 
 <div id="printArea" style="display:none;"></div>
+
+<div class="overlay lock-overlay" id="lockOverlay">
+  <div class="lock-box">
+    <div class="lock-emoji">🔒</div>
+    <h2>இலவச பயன்பாட்டு காலம் முடிந்தது</h2>
+    <p>இந்த ஆப்பை தொடர்ந்து பயன்படுத்த, விற்பனையாளரிடம் இருந்து பெற்ற Activation Code-ஐ கீழே பதிவு செய்யவும்.</p>
+    <div class="lock-error" id="lockError"></div>
+    <input type="text" id="lockCodeInput" inputmode="numeric" placeholder="எ.கா. 1234-5678" maxlength="9">
+    <button class="save-btn" id="lockSubmitBtn" style="margin-top:0;">செயல்படுத்து ✅</button>
+  </div>
+</div>
 
 <script>
 
@@ -743,27 +750,32 @@
     return results;
   }
 
+  const CURRENCY_WORDS = new Set(["ரூபாய்","ரூபாய","ரூ","ரூபாய்க்கு","rs","Rs","RS","₹","rupees","rupee"]);
+  const MARKER_WORDS = new Set(["விலை","எண்ணிக்கை"]);
   function parseAdHocItem(transcript){
     const normalized = transcript.replace(/\s+/g," ").trim();
+    if(!normalized) return null;
     const tokens = normalized.split(" ");
-    const priceIdx = tokens.indexOf("விலை");
-    if(priceIdx === -1 || priceIdx === 0) return null;
-    const name = tokens.slice(0, priceIdx).join(" ");
-    const qtyIdx = tokens.indexOf("எண்ணிக்கை");
-    let priceTokens, qtyTokens;
-    if(qtyIdx !== -1 && qtyIdx > priceIdx){
-      priceTokens = tokens.slice(priceIdx+1, qtyIdx);
-      qtyTokens = tokens.slice(qtyIdx+1);
+    const numberTokens = [];
+    const nameTokens = [];
+    tokens.forEach(tok => {
+      if(CURRENCY_WORDS.has(tok) || MARKER_WORDS.has(tok)) return;
+      const v = tokenToNumber(tok);
+      if(v !== null){ numberTokens.push(v); }
+      else { nameTokens.push(tok); }
+    });
+    const name = nameTokens.join(" ").trim();
+    if(!name || numberTokens.length === 0) return null;
+    let price, qty;
+    if(numberTokens.length >= 2){
+      price = numberTokens[0];
+      qty = numberTokens[1];
     } else {
-      priceTokens = tokens.slice(priceIdx+1);
-      qtyTokens = [];
+      price = numberTokens[0];
+      qty = 1;
     }
-    let price = null;
-    for(const t of priceTokens){ const v = tokenToNumber(t); if(v !== null){ price = v; break; } }
-    let qty = null;
-    for(const t of qtyTokens){ const v = tokenToNumber(t); if(v !== null){ qty = v; break; } }
-    if(qty === null) qty = 1;
-    if(!name || price === null || price <= 0) return null;
+    if(price <= 0) return null;
+    if(qty <= 0) qty = 1;
     return {name, price, qty};
   }
 
@@ -779,7 +791,7 @@
         speak(adHoc.name + " " + formatQty(adHoc.qty) + ", ரூபாய் " + amt + " சேர்க்கப்பட்டது");
         return;
       }
-      setStatus('பொருள் கிடைக்கவில்லை. "விலை" மற்றும் "எண்ணிக்கை" சொல்லி முயற்சிக்கவும், அல்லது கீழே உள்ள படிவத்தில் சேர்க்கவும்.');
+      setStatus('பொருள் கிடைக்கவில்லை. "ஷாம்பு 2 ரூபாய் 12" போல் விலையும் எண்ணிக்கையும் சொல்லி முயற்சிக்கவும், அல்லது கீழே உள்ள படிவத்தில் சேர்க்கவும்.');
       speak("பொருள் புரியவில்லை");
       return;
     }
@@ -1187,12 +1199,28 @@
       listEl.innerHTML = '<div class="divider-note">இன்று இன்னும் பில் இல்லை</div>';
       $("historyDayTotal").textContent = "";
     } else {
-      listEl.innerHTML = dayList.map(d => {
+      listEl.innerHTML = dayList.map((d, idx) => {
         const tag = d.method === "cash" ? "💵 Cash" : (d.method === "bank" ? "🏦 Bank" : "");
-        return `<div class="history-row"><span>#${d.billNo || ""} ${d.time} <span class="pay-tag">${tag}</span></span><span>₹${d.total.toFixed(0)}</span></div>`;
+        return `<div class="history-row">
+          <span>#${d.billNo || ""} ${d.time} <span class="pay-tag">${tag}</span></span>
+          <span style="display:flex;align-items:center;gap:8px;">₹${d.total.toFixed(0)}
+            <button class="mini-btn repeat-history-btn" data-idx="${idx}" title="மீண்டும்">🔁</button>
+          </span>
+        </div>`;
       }).join("");
       const dayTotal = dayList.reduce((s,d)=>s+d.total,0);
       $("historyDayTotal").textContent = "இன்று மொத்தம் (" + dayList.length + " பில்): ₹" + dayTotal.toFixed(0);
+      listEl.querySelectorAll(".repeat-history-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const d = dayList[parseInt(btn.dataset.idx)];
+          if(!d) return;
+          bill = d.items.map(it => ({itemId:null, name:it.name, price:it.price, qty:it.qty}));
+          renderBill();
+          $("historyOverlay").classList.remove("show");
+          setStatus("பில் #" + d.billNo + " மீண்டும் ஏற்றப்பட்டது");
+          speak("பில் மீண்டும் ஏற்றப்பட்டது");
+        });
+      });
     }
     $("historyOverlay").classList.add("show");
   });
@@ -1244,8 +1272,59 @@
     ov.addEventListener("click", (e)=>{ if(e.target === ov) ov.classList.remove("show"); });
   });
 
-  loadState();
-  renderBill();
+  const TRIAL_DAYS = 3;
+  const DAY_MS = 24*60*60*1000;
+
+  function isValidActivationCode(code){
+    const clean = (code || "").replace(/[^0-9]/g, "");
+    if(clean.length !== 8) return false;
+    const pin = clean.slice(0,4);
+    const given = clean.slice(4,8);
+    const sum = pin.split("").reduce((s,d)=>s+parseInt(d,10),0);
+    const expected = String((sum*37 + 91) % 10000).padStart(4,"0");
+    return given === expected;
+  }
+
+  function checkAccess(){
+    if(localStorage.getItem("kadai:activated") === "1") return true;
+    let firstRun = localStorage.getItem("kadai:firstrun");
+    if(!firstRun){
+      firstRun = Date.now().toString();
+      try{ localStorage.setItem("kadai:firstrun", firstRun); }catch(e){}
+    }
+    const daysUsed = (Date.now() - parseInt(firstRun,10)) / DAY_MS;
+    if(daysUsed < TRIAL_DAYS){
+      const daysLeft = Math.max(1, Math.ceil(TRIAL_DAYS - daysUsed));
+      let banner = document.querySelector(".trial-banner");
+      if(!banner){
+        banner = document.createElement("div");
+        banner.className = "trial-banner";
+        document.body.insertBefore(banner, document.body.firstChild);
+      }
+      banner.textContent = "இலவச பயன்பாட்டு காலம்: இன்னும் " + daysLeft + " நாள்(கள்)";
+      return true;
+    }
+    return false;
+  }
+
+  $("lockSubmitBtn").addEventListener("click", () => {
+    const code = $("lockCodeInput").value;
+    if(isValidActivationCode(code)){
+      try{ localStorage.setItem("kadai:activated", "1"); }catch(e){}
+      $("lockOverlay").classList.remove("show");
+      const banner = document.querySelector(".trial-banner");
+      if(banner) banner.remove();
+    } else {
+      $("lockError").textContent = "தவறான Code. மீண்டும் சரிபார்க்கவும்.";
+    }
+  });
+
+  if(!checkAccess()){
+    $("lockOverlay").classList.add("show");
+  } else {
+    loadState();
+    renderBill();
+  }
 })();
 </script>
 </body>
