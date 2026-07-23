@@ -210,6 +210,12 @@
   .history-day-total{font-family:'Baloo Thambi 2',sans-serif;color:var(--gold);font-size:22px;text-align:right;margin-top:10px;}
   .history-row .pay-tag{color:var(--chalk-dim);font-size:13px;}
 
+  .pie-wrap{display:flex;align-items:center;gap:16px;padding:8px 4px 16px;}
+  .pie-legend{flex:1;display:flex;flex-direction:column;gap:6px;}
+  .pie-legend-row{display:flex;align-items:center;gap:8px;font-size:14px;}
+  .pie-dot{width:12px;height:12px;border-radius:3px;flex-shrink:0;}
+  .pie-legend-row b{margin-left:auto;color:var(--chalk);}
+
   .item-count{font-size:14px;color:var(--chalk-dim);margin-top:2px;}
 
   .pay-total-display{text-align:center;padding:10px 0 6px;}
@@ -217,11 +223,12 @@
   .pay-total-amount{font-family:'Baloo Thambi 2',sans-serif;font-weight:800;font-size:38px;color:var(--gold);}
   .pay-method-row{display:flex;gap:10px;margin:14px 0 4px;}
   .pay-method-btn{
-    flex:1;padding:16px 8px;border-radius:14px;border:2px solid rgba(245,241,227,0.2);
+    flex:1;padding:14px 6px;border-radius:14px;border:2px solid rgba(245,241,227,0.2);
     background:var(--board);color:var(--chalk);font-family:'Baloo Thambi 2',sans-serif;
-    font-weight:700;font-size:16px;display:flex;flex-direction:column;align-items:center;gap:6px;
+    font-weight:700;font-size:12.5px;display:flex;flex-direction:column;align-items:center;gap:6px;
+    line-height:1.25;text-align:center;
   }
-  .pay-method-btn .emoji{font-size:26px;}
+  .pay-method-btn .emoji{font-size:24px;}
   .pay-method-btn.active{border-color:var(--gold);background:var(--board-lighter);color:var(--gold);}
   .cash-panel{display:none;margin-top:10px;}
   .cash-panel.show{display:block;}
@@ -326,6 +333,7 @@
   </div>
 </div>
 
+<!-- Settings sheet -->
 <div class="overlay" id="settingsOverlay">
   <div class="sheet">
     <div class="sheet-handle"></div>
@@ -350,16 +358,22 @@
   </div>
 </div>
 
+<!-- History sheet -->
 <div class="overlay" id="historyOverlay">
   <div class="sheet">
     <div class="sheet-handle"></div>
     <div class="sheet-title">இன்றைய விற்பனை (24 மணி நேர அறிக்கை) <button class="icon-btn" id="closeHistory">✕</button></div>
+    <div class="pie-wrap" id="pieWrap" style="display:none;">
+      <canvas id="pieCanvas" width="180" height="180"></canvas>
+      <div class="pie-legend" id="pieLegend"></div>
+    </div>
     <div id="historyList"></div>
     <div class="history-day-total" id="historyDayTotal"></div>
     <button class="save-btn" id="downloadCsvBtn" style="margin-top:14px;">⬇️ Excel-ஆக பதிவிறக்கம் (CSV)</button>
   </div>
 </div>
 
+<!-- Payment sheet -->
 <div class="overlay" id="paymentOverlay">
   <div class="sheet">
     <div class="sheet-handle"></div>
@@ -373,6 +387,7 @@
     <div class="pay-method-row">
       <button class="pay-method-btn" id="payCashBtn"><span class="emoji">💵</span>பணம் (Cash)</button>
       <button class="pay-method-btn" id="payBankBtn"><span class="emoji">🏦</span>வங்கி / UPI</button>
+      <button class="pay-method-btn" id="payCreditBtn"><span class="emoji">📒</span>வழக்கமான வாடிக்கையாளர்</button>
     </div>
 
     <div class="cash-panel" id="cashPanel">
@@ -392,10 +407,17 @@
       வங்கி / UPI மூலம் முழு தொகையும் பெறப்பட்டதாக பதிவு செய்யப்படும்.
     </div>
 
+    <div class="bank-panel" id="creditPanel">
+      <div class="field-label" style="margin-top:0;color:var(--chalk);text-align:left;">வாடிக்கையாளர் பெயர்</div>
+      <input type="text" id="creditCustomerName" placeholder="எ.கா. முருகன்">
+      <div class="divider-note">💡 இந்த தொகை பணமாக இன்னும் பெறப்படவில்லை — பெயருடன் பதிவு செய்யப்படும்.</div>
+    </div>
+
     <button class="confirm-pay-btn" id="confirmPayBtn" disabled>முடிந்தது ✅</button>
   </div>
 </div>
 
+<!-- Receipt sheet (shown after payment is confirmed) -->
 <div class="overlay" id="receiptOverlay">
   <div class="sheet">
     <div class="sheet-handle"></div>
@@ -415,6 +437,7 @@
 
 <div id="printArea" style="display:none;"></div>
 
+<!-- Activation lock screen -->
 <div class="overlay lock-overlay" id="lockOverlay">
   <div class="lock-box">
     <div class="lock-emoji">🔒</div>
@@ -922,9 +945,12 @@
     $("payTotalAmt").textContent = total.toFixed(0);
     $("payCashBtn").classList.remove("active");
     $("payBankBtn").classList.remove("active");
+    $("payCreditBtn").classList.remove("active");
     $("cashPanel").classList.remove("show");
     $("bankPanel").classList.remove("show");
+    $("creditPanel").classList.remove("show");
     $("cashReceived").value = "";
+    $("creditCustomerName").value = "";
     $("balancePanel").style.display = "none";
     $("confirmPayBtn").disabled = true;
 
@@ -980,8 +1006,10 @@
     payMethod = "cash";
     $("payCashBtn").classList.add("active");
     $("payBankBtn").classList.remove("active");
+    $("payCreditBtn").classList.remove("active");
     $("cashPanel").classList.add("show");
     $("bankPanel").classList.remove("show");
+    $("creditPanel").classList.remove("show");
     updateBalanceDisplay();
   });
 
@@ -989,9 +1017,28 @@
     payMethod = "bank";
     $("payBankBtn").classList.add("active");
     $("payCashBtn").classList.remove("active");
+    $("payCreditBtn").classList.remove("active");
     $("bankPanel").classList.add("show");
     $("cashPanel").classList.remove("show");
+    $("creditPanel").classList.remove("show");
     $("confirmPayBtn").disabled = false;
+  });
+
+  $("payCreditBtn").addEventListener("click", () => {
+    payMethod = "credit";
+    $("payCreditBtn").classList.add("active");
+    $("payCashBtn").classList.remove("active");
+    $("payBankBtn").classList.remove("active");
+    $("creditPanel").classList.add("show");
+    $("cashPanel").classList.remove("show");
+    $("bankPanel").classList.remove("show");
+    $("confirmPayBtn").disabled = $("creditCustomerName").value.trim() === "";
+  });
+
+  $("creditCustomerName").addEventListener("input", () => {
+    if(payMethod === "credit"){
+      $("confirmPayBtn").disabled = $("creditCustomerName").value.trim() === "";
+    }
   });
 
   $("cashReceived").addEventListener("input", updateBalanceDisplay);
@@ -1025,16 +1072,20 @@
 
   $("confirmPayBtn").addEventListener("click", async () => {
     const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
-    let received = total, balance = 0;
+    let received = total, balance = 0, customerName = null;
     if(payMethod === "cash"){
       received = parseFloat($("cashReceived").value) || 0;
       balance = received - total;
     } else if(payMethod === "bank"){
       received = total; balance = 0;
+    } else if(payMethod === "credit"){
+      customerName = $("creditCustomerName").value.trim();
+      if(!customerName) return;
+      received = 0; balance = 0;
     } else {
       return;
     }
-    const receipt = await finalizeBill(payMethod, total, received, balance);
+    const receipt = await finalizeBill(payMethod, total, received, balance, customerName);
     $("paymentOverlay").classList.remove("show");
     openReceiptSheet(receipt);
   });
@@ -1045,7 +1096,7 @@
 
   let lastFinishedItems = null;
 
-  async function finalizeBill(method, total, received, balance){
+  async function finalizeBill(method, total, received, balance, customerName){
     const itemTypes = bill.length;
     const totalQtyFinal = bill.reduce((s,b)=>s+b.qty,0);
     const key = todayKey();
@@ -1057,7 +1108,7 @@
     const billNo = dayList.length + 1;
     const itemsSnapshot = bill.map(b=>({name:b.name, qty:b.qty, price:b.price}));
     const time = new Date().toLocaleTimeString("ta-IN",{hour:'2-digit',minute:'2-digit'});
-    dayList.push({ billNo, time, total, method, received, balance, items: itemsSnapshot });
+    dayList.push({ billNo, time, total, method, received, balance, customerName: customerName || null, items: itemsSnapshot });
     try{ localStorage.setItem(key, JSON.stringify(dayList)); }catch(e){}
 
     const countPhrase = itemTypes + " வகை பொருட்கள், மொத்தம் " + formatQty(totalQtyFinal) + " எண்ணிக்கை. ";
@@ -1067,6 +1118,9 @@
     } else if(method === "cash" && balance < 0){
       speak(countPhrase + "இன்னும் ரூபாய் " + Math.abs(balance).toFixed(0) + " தேவை");
       setStatus("⚠️ இன்னும் தேவை ₹" + Math.abs(balance).toFixed(0));
+    } else if(method === "credit"){
+      speak(countPhrase + "தொகை ரூபாய் " + total.toFixed(0) + ". " + customerName + " கணக்கில் பதிவு செய்யப்பட்டது");
+      setStatus("📒 " + customerName + " கணக்கில் ₹" + total.toFixed(0) + " பதிவு செய்யப்பட்டது");
     } else {
       speak(countPhrase + "தொகை ரூபாய் " + total.toFixed(0) + ". பில் முடிந்தது");
       setStatus("பில் சேமிக்கப்பட்டது ✅ " + itemTypes + " பொருட்கள், ₹" + total.toFixed(0));
@@ -1074,11 +1128,11 @@
     lastFinishedItems = itemsSnapshot;
     bill = [];
     renderBill();
-    return { billNo, time, total, method, received, balance, items: itemsSnapshot };
+    return { billNo, time, total, method, received, balance, customerName: customerName || null, items: itemsSnapshot };
   }
 
   function openReceiptSheet(receipt){
-    const methodLabel = receipt.method === "cash" ? "💵 பணம் (Cash)" : "🏦 வங்கி / UPI";
+    const methodLabel = receipt.method === "cash" ? "💵 பணம் (Cash)" : (receipt.method === "bank" ? "🏦 வங்கி / UPI" : "📒 வழக்கமான வாடிக்கையாளர் (Credit)");
     let rows = `<div class="receipt-billno">பில் எண் ${receipt.billNo} • ${receipt.time}</div>`;
     rows += receipt.items.map(it => `
       <div class="receipt-row"><span>${escapeHtml(it.name)} × ${formatQty(it.qty)}</span><span>₹${(it.price*it.qty).toFixed(0)}</span></div>
@@ -1088,6 +1142,8 @@
     if(receipt.method === "cash"){
       rows += `<div class="receipt-row"><span>பெற்றது</span><span>₹${receipt.received.toFixed(0)}</span></div>`;
       rows += `<div class="receipt-row"><span>${receipt.balance>=0?"மீதம் கொடுக்க வேண்டியது":"இன்னும் தேவை"}</span><span>₹${Math.abs(receipt.balance).toFixed(0)}</span></div>`;
+    } else if(receipt.method === "credit"){
+      rows += `<div class="receipt-row"><span>வாடிக்கையாளர்</span><span>${escapeHtml(receipt.customerName || "")}</span></div>`;
     }
     $("receiptSummary").innerHTML = rows;
     $("receiptOverlay").dataset.current = JSON.stringify(receipt);
@@ -1282,9 +1338,10 @@
     if(dayList.length === 0){
       listEl.innerHTML = '<div class="divider-note">இன்று இன்னும் பில் இல்லை</div>';
       $("historyDayTotal").textContent = "";
+      $("pieWrap").style.display = "none";
     } else {
       listEl.innerHTML = dayList.map((d, idx) => {
-        const tag = d.method === "cash" ? "💵 Cash" : (d.method === "bank" ? "🏦 Bank" : "");
+        const tag = d.method === "cash" ? "💵 Cash" : (d.method === "bank" ? "🏦 Bank" : "📒 " + escapeHtml(d.customerName || "Credit"));
         return `<div class="history-row">
           <span>#${d.billNo || ""} ${d.time} <span class="pay-tag">${tag}</span></span>
           <span style="display:flex;align-items:center;gap:8px;">₹${d.total.toFixed(0)}
@@ -1305,12 +1362,54 @@
           speak("பில் மீண்டும் ஏற்றப்பட்டது");
         });
       });
+      drawPaymentPieChart(dayList);
     }
     $("historyOverlay").classList.add("show");
   });
   $("closeHistory").addEventListener("click", () => {
     $("historyOverlay").classList.remove("show");
   });
+
+  function drawPaymentPieChart(dayList){
+    const totals = {cash:0, bank:0, credit:0};
+    dayList.forEach(d => {
+      if(totals.hasOwnProperty(d.method)) totals[d.method] += d.total;
+    });
+    const grand = totals.cash + totals.bank + totals.credit;
+    const wrap = $("pieWrap");
+    if(grand <= 0){ wrap.style.display = "none"; return; }
+    wrap.style.display = "flex";
+
+    const slices = [
+      {label:"💵 Cash", value:totals.cash, color:"#f2b03b"},
+      {label:"🏦 Bank / UPI", value:totals.bank, color:"#6fbf73"},
+      {label:"📒 Credit", value:totals.credit, color:"#e05252"}
+    ].filter(s => s.value > 0);
+
+    const canvas = $("pieCanvas");
+    const ctx = canvas.getContext("2d");
+    const cx = canvas.width/2, cy = canvas.height/2, r = Math.min(cx,cy) - 6;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    let start = -Math.PI/2;
+    slices.forEach(s => {
+      const angle = (s.value/grand) * Math.PI*2;
+      ctx.beginPath();
+      ctx.moveTo(cx,cy);
+      ctx.arc(cx,cy,r,start,start+angle);
+      ctx.closePath();
+      ctx.fillStyle = s.color;
+      ctx.fill();
+      start += angle;
+    });
+
+    $("pieLegend").innerHTML = slices.map(s => `
+      <div class="pie-legend-row">
+        <span class="pie-dot" style="background:${s.color}"></span>
+        <span>${s.label}</span>
+        <b>₹${s.value.toFixed(0)}</b>
+      </div>
+    `).join("");
+  }
 
   function getTodayList(){
     try{
@@ -1327,18 +1426,19 @@
   $("downloadCsvBtn").addEventListener("click", () => {
     const dayList = getTodayList();
     if(dayList.length === 0){ setStatus("இன்று இன்னும் பில் இல்லை"); return; }
-    const header = ["Bill No","Time","Payment","Items","Total","Received","Balance"];
+    const header = ["Bill No","Time","Payment","Customer","Items","Total","Received","Balance"];
     const rows = dayList.map(d => [
       d.billNo || "",
       d.time,
-      d.method === "cash" ? "Cash" : "Bank/UPI",
+      d.method === "cash" ? "Cash" : (d.method === "bank" ? "Bank/UPI" : "Credit"),
+      d.customerName || "",
       d.items.map(it => it.name + " x" + it.qty).join(" | "),
       d.total.toFixed(0),
       (d.received||0).toFixed(0),
       (d.balance||0).toFixed(0)
     ]);
     const dayTotal = dayList.reduce((s,d)=>s+d.total,0);
-    rows.push(["", "", "", "TOTAL", dayTotal.toFixed(0), "", ""]);
+    rows.push(["", "", "", "", "TOTAL", dayTotal.toFixed(0), "", ""]);
     const csv = [header, ...rows].map(r => r.map(csvEscape).join(",")).join("\n");
     const blob = new Blob(["\uFEFF" + csv], {type:"text/csv;charset=utf-8;"});
     const url = URL.createObjectURL(blob);
@@ -1359,9 +1459,7 @@
   const TRIAL_DAYS = 3;
   const DAY_MS = 24*60*60*1000;
 
-  // PASTE YOUR GOOGLE APPS SCRIPT "/exec" URL HERE:
-  const CODE_CHECK_URL = "https://script.google.com/macros/s/AKfycbwmkjxRm7_6CRWUiZtjDsXfeJCKHAQ602h62c8qbvuMVu3Uw6RyuG-0qzOKotOAH7Sn/exec
-";
+  const CODE_CHECK_URL = "https://script.google.com/macros/s/AKfycbwmkjxRm7_6CRWUiZtjDsXfeJCKHAQ602h62c8qbvuMVu3Uw6RyuG-0qzOKotOAH7Sn/exec";
 
   async function checkCodeOnline(code, action){
     const url = CODE_CHECK_URL + "?code=" + encodeURIComponent(code) + "&action=" + action;
@@ -1427,6 +1525,3 @@
 </script>
 </body>
 </html>
-
-
-
