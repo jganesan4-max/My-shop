@@ -1359,14 +1359,14 @@
   const TRIAL_DAYS = 3;
   const DAY_MS = 24*60*60*1000;
 
-  function isValidActivationCode(code){
-    const clean = (code || "").replace(/[^0-9]/g, "");
-    if(clean.length !== 8) return false;
-    const pin = clean.slice(0,4);
-    const given = clean.slice(4,8);
-    const sum = pin.split("").reduce((s,d)=>s+parseInt(d,10),0);
-    const expected = String((sum*37 + 91) % 10000).padStart(4,"0");
-    return given === expected;
+  // PASTE YOUR GOOGLE APPS SCRIPT "/exec" URL HERE:
+  const CODE_CHECK_URL = "https://script.google.com/macros/s/AKfycbwmkjxRm7_6CRWUiZtjDsXfeJCKHAQ602h62c8qbvuMVu3Uw6RyuG-0qzOKotOAH7Sn/exec
+";
+
+  async function checkCodeOnline(code, action){
+    const url = CODE_CHECK_URL + "?code=" + encodeURIComponent(code) + "&action=" + action;
+    const res = await fetch(url);
+    return await res.json();
   }
 
   function checkAccess(){
@@ -1391,16 +1391,30 @@
     return false;
   }
 
-  $("lockSubmitBtn").addEventListener("click", () => {
-    const code = $("lockCodeInput").value;
-    if(isValidActivationCode(code)){
-      try{ localStorage.setItem("kadai:activated", "1"); }catch(e){}
-      $("lockOverlay").classList.remove("show");
-      const banner = document.querySelector(".trial-banner");
-      if(banner) banner.remove();
-    } else {
-      $("lockError").textContent = "தவறான Code. மீண்டும் சரிபார்க்கவும்.";
+  $("lockSubmitBtn").addEventListener("click", async () => {
+    const code = $("lockCodeInput").value.trim();
+    if(!code){
+      $("lockError").textContent = "Code-ஐ உள்ளிடவும்.";
+      return;
     }
+    $("lockError").textContent = "சரிபார்க்கிறோம்...";
+    $("lockSubmitBtn").disabled = true;
+    try{
+      const result = await checkCodeOnline(code, "activate");
+      if(result.valid){
+        try{ localStorage.setItem("kadai:activated", "1"); }catch(e){}
+        $("lockOverlay").classList.remove("show");
+        const banner = document.querySelector(".trial-banner");
+        if(banner) banner.remove();
+      } else if(result.reason === "used"){
+        $("lockError").textContent = "இந்த Code ஏற்கனவே பயன்படுத்தப்பட்டுவிட்டது.";
+      } else {
+        $("lockError").textContent = "தவறான Code. மீண்டும் சரிபார்க்கவும்.";
+      }
+    }catch(e){
+      $("lockError").textContent = "இணைய இணைப்பு இல்லை. WiFi/டேட்டாவை இயக்கி மீண்டும் முயற்சிக்கவும்.";
+    }
+    $("lockSubmitBtn").disabled = false;
   });
 
   if(!checkAccess()){
@@ -1413,3 +1427,6 @@
 </script>
 </body>
 </html>
+
+
+
