@@ -1,3 +1,4 @@
+html
 <!DOCTYPE html>
 <html lang="ta">
 <head>
@@ -659,7 +660,9 @@
 
   const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
   let keepListening = false;
-  function ensureRecognition(){
+  let activeSingleShot = null;
+
+  function ensureMainRecognition(){
     if(!SpeechRecognitionCtor) return null;
     if(recognition) return recognition;
     recognition = new SpeechRecognitionCtor();
@@ -668,43 +671,20 @@
     recognition.maxAlternatives = 3;
     recognition.onresult = (e) => {
       const transcript = e.results[e.results.length-1][0].transcript.trim();
-      if(listeningTarget === "main"){
-        handleMainTranscript(transcript);
-      } else if(listeningTarget === "newItem"){
-        $("newItemName").value = transcript;
-      } else if(listeningTarget === "qaName"){
-        $("qaName").value = transcript;
-      } else if(listeningTarget === "qaPrice"){
-        const v = extractAmountFromTranscript(transcript);
-        if(v !== null) $("qaPrice").value = v;
-        else setStatus('விலை புரியவில்லை. மீண்டும் சொல்லுங்கள்.');
-      } else if(listeningTarget === "qaQty"){
-        const v = extractAmountFromTranscript(transcript);
-        if(v !== null) $("qaQty").value = v;
-        else setStatus('எண்ணிக்கை புரியவில்லை. மீண்டும் சொல்லுங்கள்.');
-      } else if(listeningTarget === "payment"){
-        handlePaymentTranscript(transcript);
-      }
+      handleMainTranscript(transcript);
     };
     recognition.onerror = (e) => {
-      if(e.error === "no-speech" && keepListening && listeningTarget === "main"){
+      if(e.error === "no-speech" && keepListening){
         return;
       }
-      const reasons = {
-        "not-allowed": "மைக் அனுமதி மறுக்கப்பட்டது. Chrome அமைப்புகளில் மைக் அனுமதி கொடுக்கவும்.",
-        "service-not-allowed": "இந்த பக்கம் https இல்லாததால் மைக் வேலை செய்யவில்லை. கீழே உள்ள வழிமுறையைப் பின்பற்றவும்.",
-        "audio-capture": "மைக் கிடைக்கவில்லை. வேறு ஆப் மைக்கை பயன்படுத்துகிறதா என பாருங்கள்.",
-        "network": "இணைய இணைப்பு இல்லை. WiFi/மொபைல் டேட்டாவை சரிபார்க்கவும்.",
-        "no-speech": "எதுவும் கேட்கவில்லை. மீண்டும் தட்டி பேசவும்."
-      };
-      setStatus(reasons[e.error] || ("மைக் பிழை (" + e.error + "). மீண்டும் முயற்சி செய்யவும்."));
+      setStatus(micErrorMessage(e.error));
       keepListening = false;
       stopListeningUI();
     };
     recognition.onend = () => {
-      if(keepListening && listeningTarget === "main"){
+      if(keepListening){
         setTimeout(() => {
-          if(keepListening && listeningTarget === "main"){
+          if(keepListening){
             try{ recognition.start(); }catch(e){}
           }
         }, 250);
@@ -715,16 +695,74 @@
     return recognition;
   }
 
+  function micErrorMessage(err){
+    const reasons = {
+      "not-allowed": "மைக் அனுமதி மறுக்கப்பட்டது. Chrome அமைப்புகளில் மைக் அனுமதி கொடுக்கவும்.",
+      "service-not-allowed": "இந்த பக்கம் https இல்லாததால் மைக் வேலை செய்யவில்லை. கீழே உள்ள வழிமுறையைப் பின்பற்றவும்.",
+      "audio-capture": "மைக் கிடைக்கவில்லை. வேறு ஆப் மைக்கை பயன்படுத்துகிறதா என பாருங்கள்.",
+      "network": "இணைய இணைப்பு இல்லை. WiFi/மொபைல் டேட்டாவை சரிபார்க்கவும்.",
+      "no-speech": "எதுவும் கேட்கவில்லை. மீண்டும் தட்டி பேசவும்."
+    };
+    return reasons[err] || ("மைக் பிழை (" + err + "). மீண்டும் முயற்சி செய்யவும்.");
+  }
+
+  function stopMainListening(){
+    keepListening = false;
+    listeningTarget = null;
+    if(recognition){ try{ recognition.stop(); }catch(e){} }
+    $("micBtn").classList.remove("listening");
+  }
+
+  function stopActiveSingleShot(){
+    if(activeSingleShot){
+      const {recognition:rec, btnEl} = activeSingleShot;
+      try{ rec.onend = null; rec.onerror = null; rec.onresult = null; rec.stop(); }catch(e){}
+      if(btnEl) btnEl.classList.remove("listening");
+      activeSingleShot = null;
+    }
+  }
+
+  function startSingleShotMic(target, btnEl, onTranscript){
+    if(!SpeechRecognitionCtor){
+      setStatus("இந்த பிரவுசரில் மைக் கிடைக்கவில்லை. Chrome பயன்படுத்தவும்.");
+      return;
+    }
+    if(activeSingleShot && activeSingleShot.target === target){
+      stopActiveSingleShot();
+      return;
+    }
+    stopMainListening();
+    stopActiveSingleShot();
+
+    const rec = new SpeechRecognitionCtor();
+    rec.lang = "ta-IN";
+    rec.interimResults = false;
+    rec.maxAlternatives = 3;
+    rec.onresult = (e) => {
+      const transcript = e.results[e.results.length-1][0].transcript.trim();
+      onTranscript(transcript);
+    };
+    rec.onerror = (e) => {
+      setStatus(micErrorMessage(e.error));
+      if(btnEl) btnEl.classList.remove("listening");
+      activeSingleShot = null;
+    };
+    rec.onend = () => {
+      if(btnEl) btnEl.classList.remove("listening");
+      activeSingleShot = null;
+    };
+    activeSingleShot = {recognition: rec, target, btnEl};
+    if(btnEl) btnEl.classList.add("listening");
+    try{ rec.start(); }catch(e){
+      setStatus("மைக் தொடங்க முடியவில்லை. சிறிது நேரம் கழித்து மீண்டும் தட்டவும்.");
+      activeSingleShot = null;
+      if(btnEl) btnEl.classList.remove("listening");
+    }
+  }
+
   function stopListeningUI(){
     $("micBtn").classList.remove("listening");
-    $("newItemMic").classList.remove("listening");
-    $("qaMic").classList.remove("listening");
-    const payMic = document.getElementById("payMic");
-    if(payMic) payMic.classList.remove("listening");
-    const qaPriceMic = document.getElementById("qaPriceMic");
-    if(qaPriceMic) qaPriceMic.classList.remove("listening");
-    const qaQtyMic = document.getElementById("qaQtyMic");
-    if(qaQtyMic) qaQtyMic.classList.remove("listening");
+    stopActiveSingleShot();
     listeningTarget = null;
   }
 
@@ -851,19 +889,17 @@
   }
 
   $("micBtn").addEventListener("click", () => {
-    const rec = ensureRecognition();
+    const rec = ensureMainRecognition();
     if(!rec){
       setStatus("இந்த பிரவுசரில் மைக் கிடைக்கவில்லை. Chrome பயன்படுத்தவும்.");
       return;
     }
     if(keepListening){
-      keepListening = false;
-      listeningTarget = null;
-      try{ rec.stop(); }catch(e){}
-      stopListeningUI();
+      stopMainListening();
       setStatus("மைக் நிறுத்தப்பட்டது");
       return;
     }
+    stopActiveSingleShot();
     keepListening = true;
     listeningTarget = "main";
     $("micBtn").classList.add("listening");
@@ -872,39 +908,31 @@
   });
 
   $("newItemMic").addEventListener("click", () => {
-    const rec = ensureRecognition();
-    if(!rec) return;
-    if(listeningTarget){ rec.stop(); return; }
-    listeningTarget = "newItem";
-    $("newItemMic").classList.add("listening");
-    try{ rec.start(); }catch(e){}
+    startSingleShotMic("newItem", $("newItemMic"), (transcript) => {
+      $("newItemName").value = transcript;
+    });
   });
 
   $("qaMic").addEventListener("click", () => {
-    const rec = ensureRecognition();
-    if(!rec) return;
-    if(listeningTarget){ rec.stop(); return; }
-    listeningTarget = "qaName";
-    $("qaMic").classList.add("listening");
-    try{ rec.start(); }catch(e){}
+    startSingleShotMic("qaName", $("qaMic"), (transcript) => {
+      $("qaName").value = transcript;
+    });
   });
 
   $("qaPriceMic").addEventListener("click", () => {
-    const rec = ensureRecognition();
-    if(!rec) return;
-    if(listeningTarget){ rec.stop(); return; }
-    listeningTarget = "qaPrice";
-    $("qaPriceMic").classList.add("listening");
-    try{ rec.start(); }catch(e){}
+    startSingleShotMic("qaPrice", $("qaPriceMic"), (transcript) => {
+      const v = extractAmountFromTranscript(transcript);
+      if(v !== null) $("qaPrice").value = v;
+      else setStatus('விலை புரியவில்லை. மீண்டும் சொல்லுங்கள்.');
+    });
   });
 
   $("qaQtyMic").addEventListener("click", () => {
-    const rec = ensureRecognition();
-    if(!rec) return;
-    if(listeningTarget){ rec.stop(); return; }
-    listeningTarget = "qaQty";
-    $("qaQtyMic").classList.add("listening");
-    try{ rec.start(); }catch(e){}
+    startSingleShotMic("qaQty", $("qaQtyMic"), (transcript) => {
+      const v = extractAmountFromTranscript(transcript);
+      if(v !== null) $("qaQty").value = v;
+      else setStatus('எண்ணிக்கை புரியவில்லை. மீண்டும் சொல்லுங்கள்.');
+    });
   });
 
   $("qaAddBtn").addEventListener("click", () => {
@@ -969,12 +997,9 @@
   }
 
   $("payMic").addEventListener("click", () => {
-    const rec = ensureRecognition();
-    if(!rec) return;
-    if(listeningTarget){ rec.stop(); return; }
-    listeningTarget = "payment";
-    $("payMic").classList.add("listening");
-    try{ rec.start(); }catch(e){}
+    startSingleShotMic("payment", $("payMic"), (transcript) => {
+      handlePaymentTranscript(transcript);
+    });
   });
 
   function handlePaymentTranscript(transcript){
