@@ -1,4 +1,3 @@
-html
 <!DOCTYPE html>
 <html lang="ta">
 <head>
@@ -279,8 +278,30 @@ html
   .lock-box input{text-align:center;letter-spacing:2px;font-size:20px;margin-bottom:10px;}
   .lock-error{color:var(--danger);font-size:14px;min-height:20px;margin-bottom:6px;}
   .trial-banner{
-    background:rgba(242,176,59,0.15);color:var(--gold);text-align:center;
-    font-size:13px;padding:6px 10px;border-bottom:1px dashed rgba(242,176,59,0.3);
+    position:sticky;top:0;z-index:30;
+    background:var(--gold);color:#1a1400;text-align:center;
+    font-family:'Baloo Thambi 2',sans-serif;
+    font-size:15px;font-weight:800;letter-spacing:0.2px;
+    padding:9px 10px;border-bottom:2px solid var(--gold-dim);
+    box-shadow:0 2px 8px rgba(0,0,0,0.25);
+  }
+  .resume-banner{
+    background:rgba(111,191,115,0.15);color:var(--ok);text-align:center;
+    font-size:13px;padding:8px 10px;border-bottom:1px dashed rgba(111,191,115,0.3);
+    display:flex;align-items:center;justify-content:center;gap:8px;
+  }
+  .resume-banner button{
+    background:var(--ok);color:#123018;border:none;border-radius:8px;
+    padding:4px 10px;font-size:12px;font-weight:700;
+  }
+  .brand-footer{
+    text-align:center;padding:18px 16px 4px;
+    color:var(--chalk-dim);font-size:12.5px;line-height:1.6;
+    border-top:1px dashed rgba(245,241,227,0.15);margin-top:10px;
+  }
+  .brand-footer .brand-name{
+    color:var(--gold);font-weight:700;font-family:'Baloo Thambi 2',sans-serif;
+    font-size:14px;
   }
 </style>
 </head>
@@ -327,6 +348,11 @@ html
 
   <div class="section-title">இந்த பில்</div>
   <div class="bill-box" id="billBox"></div>
+
+  <div class="brand-footer">
+    <span class="brand-name">Simple Apps</span> by Dharsan &amp; Ganesh<br>
+    Powered by Claude AI
+  </div>
 
   <div class="bottom-bar">
     <button class="btn btn-history" id="historyBtn">📒</button>
@@ -455,6 +481,7 @@ html
 (function(){
   const STORAGE_KEY_ITEMS = "kadai:items";
   const STORAGE_KEY_SHOPNAME = "kadai:shopname";
+  const STORAGE_KEY_CURRENT_BILL = "kadai:currentbill";
   const todayKey = () => "kadai:sales:" + new Date().toISOString().slice(0,10);
 
   const DEFAULT_ITEMS = [
@@ -552,6 +579,7 @@ html
     $("shopNameDisplay").textContent = shopName;
     $("shopNameInput").value = shopName;
     renderItems();
+    restoreCurrentBillIfAny();
   }
 
   async function saveItems(){
@@ -559,6 +587,46 @@ html
   }
   async function saveShopName(){
     try{ localStorage.setItem(STORAGE_KEY_SHOPNAME, shopName); }catch(e){}
+  }
+
+  // ---- Persist the in-progress bill so a phone call / backgrounded tab
+  // ---- never wipes out items the shopkeeper already added ----
+  function persistCurrentBill(){
+    try{
+      if(bill.length === 0){
+        localStorage.removeItem(STORAGE_KEY_CURRENT_BILL);
+      } else {
+        localStorage.setItem(STORAGE_KEY_CURRENT_BILL, JSON.stringify(bill));
+      }
+    }catch(e){}
+  }
+
+  function restoreCurrentBillIfAny(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY_CURRENT_BILL);
+      if(raw){
+        const saved = JSON.parse(raw);
+        if(Array.isArray(saved) && saved.length > 0){
+          bill = saved;
+          renderBill();
+          showResumeBanner(saved.length);
+        }
+      }
+    }catch(e){}
+  }
+
+  function showResumeBanner(count){
+    let banner = document.querySelector(".resume-banner");
+    if(!banner){
+      banner = document.createElement("div");
+      banner.className = "resume-banner";
+      document.body.insertBefore(banner, document.body.firstChild);
+    }
+    banner.innerHTML = "⏸️ முந்தைய பில் (" + count + " பொருட்கள்) மீட்டெடுக்கப்பட்டது" +
+      ' <button id="dismissResumeBanner">சரி</button>';
+    const dismissBtn = $("dismissResumeBanner");
+    if(dismissBtn) dismissBtn.addEventListener("click", () => banner.remove());
+    setTimeout(() => { if(banner && banner.parentNode) banner.remove(); }, 6000);
   }
 
   function renderItems(){
@@ -652,6 +720,7 @@ html
     $("itemCountLine").textContent = bill.length === 0
       ? "0 பொருட்கள்"
       : bill.length + " வகை பொருட்கள் (மொத்தம் " + formatQty(totalQty) + ")";
+    persistCurrentBill();
   }
 
   function formatQty(q){
@@ -677,6 +746,14 @@ html
       if(e.error === "no-speech" && keepListening){
         return;
       }
+      if((e.error === "audio-capture" || e.error === "not-allowed" || e.error === "aborted") && keepListening){
+        // Likely a phone call (or another app) grabbed the microphone.
+        // We keep keepListening = true so it auto-resumes once the mic is free.
+        // Importantly, the bill array is untouched here and is already
+        // persisted to localStorage, so nothing gets lost.
+        setStatus("📞 மைக் கிடைக்கவில்லை (call/வேறு ஆப்). மைக் திரும்பக் கிடைத்தவுடன் தொடரும்... பில் பாதுகாப்பாக உள்ளது.");
+        return;
+      }
       setStatus(micErrorMessage(e.error));
       keepListening = false;
       stopListeningUI();
@@ -685,7 +762,10 @@ html
       if(keepListening){
         setTimeout(() => {
           if(keepListening){
-            try{ recognition.start(); }catch(e){}
+            try{ recognition.start(); }catch(e){
+              // mic still busy (call may still be active) - retry shortly
+              setTimeout(() => { if(keepListening){ try{ recognition.start(); }catch(e2){} } }, 1500);
+            }
           }
         }, 250);
       } else {
@@ -1451,13 +1531,13 @@ html
   $("downloadCsvBtn").addEventListener("click", () => {
     const dayList = getTodayList();
     if(dayList.length === 0){ setStatus("இன்று இன்னும் பில் இல்லை"); return; }
-    const header = ["Bill No","Time","Payment","Customer","Items","Total","Received","Balance"];
+    const header = ["Bill No","Time","Payment","Customer","Items (name x qty @ rate)","Total","Received","Balance"];
     const rows = dayList.map(d => [
       d.billNo || "",
       d.time,
       d.method === "cash" ? "Cash" : (d.method === "bank" ? "Bank/UPI" : "Credit"),
       d.customerName || "",
-      d.items.map(it => it.name + " x" + it.qty).join(" | "),
+      d.items.map(it => it.name + " x" + it.qty + " @₹" + it.price).join(" | "),
       d.total.toFixed(0),
       (d.received||0).toFixed(0),
       (d.balance||0).toFixed(0)
@@ -1538,6 +1618,15 @@ html
       $("lockError").textContent = "இணைய இணைப்பு இல்லை. WiFi/டேட்டாவை இயக்கி மீண்டும் முயற்சிக்கவும்.";
     }
     $("lockSubmitBtn").disabled = false;
+  });
+
+  // Resume the continuous mic listening automatically once the call ends
+  // and the tab is visible/focused again. The bill itself is never lost
+  // because it is persisted to localStorage on every change (persistCurrentBill).
+  document.addEventListener("visibilitychange", () => {
+    if(document.visibilityState === "visible" && keepListening && recognition){
+      try{ recognition.start(); }catch(e){}
+    }
   });
 
   if(!checkAccess()){
