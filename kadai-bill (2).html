@@ -1,0 +1,1641 @@
+<!DOCTYPE html>
+<html lang="ta">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>கடை பில் - Kadai Bill</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+Thambi+2:wght@500;600;700;800&family=Noto+Sans+Tamil:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --board:#1e3d2e;
+    --board-light:#28503c;
+    --board-lighter:#325f48;
+    --chalk:#f5f1e3;
+    --chalk-dim:#cdd8ce;
+    --gold:#f2b03b;
+    --gold-dim:#d99a2b;
+    --brick:#c1440e;
+    --brick-dim:#a63a0c;
+    --danger:#e05252;
+    --ok:#6fbf73;
+    --radius:18px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;}
+  body{
+    background:var(--board);
+    background-image:
+      radial-gradient(circle at 20% 10%, rgba(255,255,255,0.03), transparent 40%),
+      radial-gradient(circle at 80% 80%, rgba(255,255,255,0.03), transparent 45%);
+    color:var(--chalk);
+    font-family:'Noto Sans Tamil','Noto Sans',sans-serif;
+    -webkit-tap-highlight-color:transparent;
+    user-select:none;
+    min-height:100vh;
+  }
+  .app{max-width:520px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;padding-bottom:110px;}
+
+  header{
+    position:sticky;top:0;z-index:20;
+    background:var(--board);
+    border-bottom:2px dashed rgba(245,241,227,0.25);
+    padding:14px 16px 12px;
+  }
+  .shop-row{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .shop-name{
+    font-family:'Baloo Thambi 2',sans-serif;
+    font-weight:700;font-size:20px;color:var(--chalk);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .icon-btn{
+    background:var(--board-light);border:1px solid rgba(245,241,227,0.2);
+    color:var(--chalk);border-radius:12px;width:44px;height:44px;
+    font-size:20px;display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;
+  }
+  .icon-btn:active{background:var(--board-lighter);}
+  .total-board{margin-top:10px;text-align:center;}
+  .total-label{font-size:14px;color:var(--chalk-dim);letter-spacing:0.5px;}
+  .total-amount{
+    font-family:'Baloo Thambi 2',sans-serif;
+    font-weight:800;font-size:44px;color:var(--gold);
+    line-height:1.15;
+    text-shadow:0 0 18px rgba(242,176,59,0.25);
+  }
+
+  .mic-wrap{display:flex;flex-direction:column;align-items:center;padding:18px 16px 6px;gap:10px;}
+  .mic-btn{
+    width:96px;height:96px;border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, var(--gold-dim), var(--gold) 70%);
+    border:4px solid rgba(245,241,227,0.25);
+    display:flex;align-items:center;justify-content:center;
+    font-size:38px;color:var(--board);
+    box-shadow:0 6px 0 rgba(0,0,0,0.25), 0 8px 24px rgba(0,0,0,0.35);
+  }
+  .mic-btn:active{transform:translateY(3px);box-shadow:0 3px 0 rgba(0,0,0,0.25);}
+  .mic-btn.listening{
+    animation:pulse 1.1s infinite;
+    background:radial-gradient(circle at 35% 30%, var(--brick-dim), var(--brick) 70%);
+  }
+  @keyframes pulse{
+    0%{box-shadow:0 6px 0 rgba(0,0,0,0.25), 0 0 0 0 rgba(193,68,14,0.5);}
+    70%{box-shadow:0 6px 0 rgba(0,0,0,0.25), 0 0 0 22px rgba(193,68,14,0);}
+    100%{box-shadow:0 6px 0 rgba(0,0,0,0.25), 0 0 0 0 rgba(193,68,14,0);}
+  }
+  .mic-hint{font-size:15px;color:var(--chalk-dim);text-align:center;min-height:22px;}
+  .status-line{
+    font-size:16px;text-align:center;color:var(--chalk);
+    background:var(--board-light);border-radius:12px;padding:8px 14px;
+    margin:0 16px;min-height:20px;
+  }
+
+  .section-title{
+    font-family:'Baloo Thambi 2',sans-serif;
+    font-size:17px;font-weight:600;color:var(--chalk-dim);
+    margin:18px 16px 8px;
+  }
+  .items-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px;}
+  .item-card{
+    background:var(--board-light);border:1px solid rgba(245,241,227,0.12);
+    border-radius:var(--radius);padding:12px;
+    display:flex;flex-direction:column;gap:4px;
+    position:relative;overflow:hidden;
+  }
+  .item-card:active{background:var(--board-lighter);}
+  .item-name{font-size:17px;font-weight:600;color:var(--chalk);}
+  .item-price{font-size:15px;color:var(--gold);font-weight:600;}
+  .item-add-badge{
+    position:absolute;top:8px;right:8px;
+    background:var(--gold);color:var(--board);
+    font-weight:800;font-size:13px;border-radius:8px;padding:1px 7px;
+    opacity:0;transform:scale(0.6);
+    transition:opacity 0.2s, transform 0.2s;
+  }
+  .item-card.bump .item-add-badge{opacity:1;transform:scale(1);}
+  .item-card.bump{animation:cardbump 0.25s ease;}
+  @keyframes cardbump{0%{transform:scale(1);}50%{transform:scale(0.96);}100%{transform:scale(1);}}
+
+  .empty-items{margin:10px 16px;color:var(--chalk-dim);font-size:15px;text-align:center;padding:20px;border:1px dashed rgba(245,241,227,0.25);border-radius:var(--radius);}
+
+  .quickadd-box{background:var(--board-light);border-radius:var(--radius);padding:12px;margin:0 16px;border:1px dashed rgba(245,241,227,0.3);}
+  .quickadd-box .field-row{gap:8px;}
+  .quickadd-box input{font-size:15px;}
+
+  .bill-box{margin:10px 16px 0;background:rgba(0,0,0,0.15);border-radius:var(--radius);padding:6px 4px;min-height:60px;}
+  .bill-row{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:10px 12px;border-bottom:1px dashed rgba(245,241,227,0.15);
+    animation:rowIn 0.2s ease;
+  }
+  .bill-row:last-child{border-bottom:none;}
+  @keyframes rowIn{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}
+  .bill-row-name{font-size:15.5px;}
+  .bill-row-name b{color:var(--gold);}
+  .bill-row-right{display:flex;align-items:center;gap:10px;}
+  .bill-row-amt{font-size:15.5px;font-weight:700;min-width:64px;text-align:right;}
+  .del-x{
+    width:30px;height:30px;border-radius:8px;background:rgba(224,82,82,0.15);
+    color:var(--danger);border:1px solid rgba(224,82,82,0.4);
+    display:flex;align-items:center;justify-content:center;font-size:16px;
+  }
+  .edit-x{
+    width:30px;height:30px;border-radius:8px;background:rgba(242,176,59,0.15);
+    color:var(--gold);border:1px solid rgba(242,176,59,0.4);
+    display:flex;align-items:center;justify-content:center;font-size:14px;
+  }
+  .bill-empty{padding:18px;text-align:center;color:var(--chalk-dim);font-size:15px;}
+
+  .bottom-bar{
+    position:fixed;left:0;right:0;bottom:0;z-index:20;
+    background:var(--board);border-top:2px dashed rgba(245,241,227,0.25);
+    padding:10px 16px calc(10px + env(safe-area-inset-bottom));
+    max-width:520px;margin:0 auto;
+    display:flex;gap:10px;
+  }
+  .btn{
+    flex:1;border:none;border-radius:14px;padding:16px 10px;
+    font-family:'Baloo Thambi 2',sans-serif;font-weight:700;font-size:17px;
+    display:flex;align-items:center;justify-content:center;gap:6px;
+  }
+  .btn-finish{background:var(--brick);color:var(--chalk);box-shadow:0 4px 0 var(--brick-dim);}
+  .btn-finish:active{transform:translateY(3px);box-shadow:0 1px 0 var(--brick-dim);}
+  .btn-history{background:var(--board-light);color:var(--chalk);flex:0 0 56px;box-shadow:0 4px 0 rgba(0,0,0,0.3);border:1px solid rgba(245,241,227,0.15);}
+  .btn-history:active{transform:translateY(3px);}
+
+  .overlay{
+    position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:50;
+    display:none;align-items:flex-end;justify-content:center;
+  }
+  .overlay.show{display:flex;}
+  .sheet{
+    background:var(--board-light);width:100%;max-width:520px;
+    border-radius:22px 22px 0 0;max-height:88vh;overflow-y:auto;
+    padding:16px 16px calc(20px + env(safe-area-inset-bottom));
+  }
+  .sheet-handle{width:40px;height:5px;background:rgba(245,241,227,0.3);border-radius:4px;margin:0 auto 12px;}
+  .sheet-title{font-family:'Baloo Thambi 2',sans-serif;font-size:20px;font-weight:700;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;}
+  .field-label{font-size:14px;color:var(--chalk-dim);margin:10px 0 4px;}
+  .field-row{display:flex;gap:8px;}
+  input[type=text],input[type=number]{
+    width:100%;background:var(--board);border:1px solid rgba(245,241,227,0.25);
+    color:var(--chalk);border-radius:10px;padding:12px;font-size:16px;
+    font-family:'Noto Sans Tamil',sans-serif;
+  }
+  .mic-mini{
+    flex:0 0 48px;background:var(--gold);color:var(--board);border:none;
+    border-radius:10px;font-size:18px;display:flex;align-items:center;justify-content:center;
+  }
+  .mic-mini.listening{background:var(--brick);color:var(--chalk);}
+  .save-btn{
+    margin-top:16px;width:100%;background:var(--ok);color:#123018;border:none;
+    border-radius:12px;padding:14px;font-weight:700;font-size:17px;font-family:'Baloo Thambi 2',sans-serif;
+  }
+  .existing-item-row{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:10px 4px;border-bottom:1px solid rgba(245,241,227,0.1);
+  }
+  .existing-item-row .info{font-size:15px;}
+  .existing-item-row .info b{color:var(--gold);}
+  .existing-item-row.editing{gap:6px;}
+  .existing-item-row.editing input.edit-name{width:auto !important;flex:1;padding:8px;font-size:14px;}
+  .existing-item-row.editing input.edit-price{width:64px !important;flex:0 0 64px;padding:8px;font-size:14px;}
+  .row-actions{display:flex;gap:6px;}
+  .mini-btn{background:var(--board);border:1px solid rgba(245,241,227,0.25);color:var(--chalk);border-radius:8px;width:34px;height:34px;font-size:15px;flex-shrink:0;}
+  .mini-btn.del-btn{color:var(--danger);border-color:rgba(224,82,82,0.4);}
+  .mini-btn.cancel-edit-btn{color:var(--danger);border-color:rgba(224,82,82,0.4);}
+  .mini-btn.save-edit-btn{color:var(--ok);border-color:rgba(111,191,115,0.4);}
+  .divider-note{font-size:13px;color:var(--chalk-dim);margin-top:14px;line-height:1.5;}
+  .history-row{padding:10px 4px;border-bottom:1px dashed rgba(245,241,227,0.15);display:flex;justify-content:space-between;font-size:15px;}
+  .history-day-total{font-family:'Baloo Thambi 2',sans-serif;color:var(--gold);font-size:22px;text-align:right;margin-top:10px;}
+  .history-row .pay-tag{color:var(--chalk-dim);font-size:13px;}
+
+  .pie-wrap{display:flex;align-items:center;gap:16px;padding:8px 4px 16px;}
+  .pie-legend{flex:1;display:flex;flex-direction:column;gap:6px;}
+  .pie-legend-row{display:flex;align-items:center;gap:8px;font-size:14px;}
+  .pie-dot{width:12px;height:12px;border-radius:3px;flex-shrink:0;}
+  .pie-legend-row b{margin-left:auto;color:var(--chalk);}
+
+  .item-count{font-size:14px;color:var(--chalk-dim);margin-top:2px;}
+
+  .pay-total-display{text-align:center;padding:10px 0 6px;}
+  .pay-total-label{font-size:14px;color:var(--chalk-dim);}
+  .pay-total-amount{font-family:'Baloo Thambi 2',sans-serif;font-weight:800;font-size:38px;color:var(--gold);}
+  .pay-method-row{display:flex;gap:10px;margin:14px 0 4px;}
+  .pay-method-btn{
+    flex:1;padding:14px 6px;border-radius:14px;border:2px solid rgba(245,241,227,0.2);
+    background:var(--board);color:var(--chalk);font-family:'Baloo Thambi 2',sans-serif;
+    font-weight:700;font-size:12.5px;display:flex;flex-direction:column;align-items:center;gap:6px;
+    line-height:1.25;text-align:center;
+  }
+  .pay-method-btn .emoji{font-size:24px;}
+  .pay-method-btn.active{border-color:var(--gold);background:var(--board-lighter);color:var(--gold);}
+  .cash-panel{display:none;margin-top:10px;}
+  .cash-panel.show{display:block;}
+  .denom-row{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;}
+  .denom-btn{
+    background:var(--board);border:1px solid rgba(245,241,227,0.25);color:var(--chalk);
+    border-radius:10px;padding:10px 14px;font-size:15px;font-weight:600;
+  }
+  .denom-btn:active{background:var(--board-lighter);}
+  .balance-panel{margin-top:14px;border-radius:14px;padding:14px;text-align:center;background:rgba(0,0,0,0.15);}
+  .balance-label{font-size:14px;color:var(--chalk-dim);}
+  .balance-amount{font-family:'Baloo Thambi 2',sans-serif;font-weight:800;font-size:32px;margin-top:2px;}
+  .balance-amount.give{color:var(--ok);}
+  .balance-amount.short{color:var(--danger);}
+  .bank-panel{display:none;margin-top:10px;text-align:center;color:var(--chalk-dim);font-size:15px;padding:10px 0;}
+  .bank-panel.show{display:block;}
+  .confirm-pay-btn{
+    margin-top:16px;width:100%;background:var(--ok);color:#123018;border:none;
+    border-radius:12px;padding:15px;font-weight:700;font-size:18px;font-family:'Baloo Thambi 2',sans-serif;
+  }
+  .confirm-pay-btn:disabled{opacity:0.4;}
+
+  .receipt-row{display:flex;justify-content:space-between;padding:8px 2px;border-bottom:1px dashed rgba(245,241,227,0.15);font-size:15px;}
+  .receipt-row.total{font-family:'Baloo Thambi 2',sans-serif;font-weight:800;font-size:20px;color:var(--gold);border-bottom:none;padding-top:12px;}
+  .receipt-billno{text-align:center;color:var(--chalk-dim);font-size:14px;margin-bottom:8px;}
+
+  @media print{
+    body *{visibility:hidden;}
+    #printArea, #printArea *{visibility:visible;}
+    #printArea{display:block !important;position:absolute;top:0;left:0;width:100%;padding:10px;color:#000;background:#fff;font-family:'Noto Sans Tamil',sans-serif;}
+    #printArea h2{margin:0 0 4px;font-size:18px;text-align:center;}
+    #printArea .pr-line{border-top:1px dashed #000;margin:6px 0;}
+    #printArea table{width:100%;border-collapse:collapse;font-size:13px;}
+    #printArea td{padding:3px 0;}
+    #printArea .pr-total{font-weight:bold;font-size:15px;}
+  }
+
+  .lock-overlay{
+    position:fixed;inset:0;background:var(--board);z-index:999;
+    display:none;align-items:center;justify-content:center;padding:24px;
+  }
+  .lock-overlay.show{display:flex;}
+  .lock-box{max-width:400px;width:100%;text-align:center;}
+  .lock-box .lock-emoji{font-size:52px;margin-bottom:10px;}
+  .lock-box h2{font-family:'Baloo Thambi 2',sans-serif;color:var(--gold);font-size:22px;margin:0 0 10px;}
+  .lock-box p{color:var(--chalk-dim);font-size:15px;line-height:1.6;margin:0 0 16px;}
+  .lock-box input{text-align:center;letter-spacing:2px;font-size:20px;margin-bottom:10px;}
+  .lock-error{color:var(--danger);font-size:14px;min-height:20px;margin-bottom:6px;}
+  .trial-banner{
+    position:sticky;top:0;z-index:30;
+    background:var(--gold);color:#1a1400;text-align:center;
+    font-family:'Baloo Thambi 2',sans-serif;
+    font-size:15px;font-weight:800;letter-spacing:0.2px;
+    padding:9px 10px;border-bottom:2px solid var(--gold-dim);
+    box-shadow:0 2px 8px rgba(0,0,0,0.25);
+  }
+  .resume-banner{
+    background:rgba(111,191,115,0.15);color:var(--ok);text-align:center;
+    font-size:13px;padding:8px 10px;border-bottom:1px dashed rgba(111,191,115,0.3);
+    display:flex;align-items:center;justify-content:center;gap:8px;
+  }
+  .resume-banner button{
+    background:var(--ok);color:#123018;border:none;border-radius:8px;
+    padding:4px 10px;font-size:12px;font-weight:700;
+  }
+  .brand-footer{
+    text-align:center;padding:18px 16px 4px;
+    color:var(--chalk-dim);font-size:12.5px;line-height:1.6;
+    border-top:1px dashed rgba(245,241,227,0.15);margin-top:10px;
+  }
+  .brand-footer .brand-name{
+    color:var(--gold);font-weight:700;font-family:'Baloo Thambi 2',sans-serif;
+    font-size:14px;
+  }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <header>
+    <div class="shop-row">
+      <div class="shop-name" id="shopNameDisplay">என் கடை</div>
+      <button class="icon-btn" id="settingsBtn" title="பொருட்கள்">⚙️</button>
+    </div>
+    <div class="total-board">
+      <div class="total-label">மொத்தம்</div>
+      <div class="total-amount">₹<span id="totalAmt">0</span></div>
+      <div class="item-count" id="itemCountLine">0 பொருட்கள்</div>
+    </div>
+  </header>
+
+  <div class="mic-wrap">
+    <button class="mic-btn" id="micBtn">🎙️</button>
+    <div class="mic-hint" id="micHint">ஒரு தடவை தட்டவும் — பிறகு பொருட்களை ஒவ்வொன்றாக சொல்லிக் கொண்டே இருங்கள்</div>
+  </div>
+  <div class="status-line" id="statusLine">உதாரணம்: "அரிசி மூன்று" பிறகு "சர்க்கரை இரண்டு" — நிறுத்த மீண்டும் மைக்கை தட்டவும்</div>
+
+  <div class="section-title">பொருட்கள் (தட்டவும்)</div>
+  <div class="items-grid" id="itemsGrid"></div>
+
+  <div class="section-title">பட்டியலில் இல்லாத பொருள்</div>
+  <div class="quickadd-box">
+    <div class="field-row">
+      <input type="text" id="qaName" placeholder="பொருள் பெயர் (எ.கா. ஷாம்பு)">
+      <button class="mic-mini" id="qaMic">🎙️</button>
+    </div>
+    <div class="field-row" style="margin-top:8px;">
+      <input type="number" id="qaPrice" inputmode="decimal" placeholder="விலை ₹">
+      <button class="mic-mini" id="qaPriceMic">🎙️</button>
+    </div>
+    <div class="field-row" style="margin-top:8px;">
+      <input type="number" id="qaQty" inputmode="decimal" placeholder="எண்ணிக்கை" value="1">
+      <button class="mic-mini" id="qaQtyMic">🎙️</button>
+    </div>
+    <button class="save-btn" id="qaAddBtn" style="margin-top:8px;">+ பில்லில் சேர்</button>
+  </div>
+
+  <div class="section-title">இந்த பில்</div>
+  <div class="bill-box" id="billBox"></div>
+
+  <div class="brand-footer">
+    <span class="brand-name">Simple Apps</span> by Dharsan &amp; Ganesh<br>
+    Powered by Claude AI
+  </div>
+
+  <div class="bottom-bar">
+    <button class="btn btn-history" id="historyBtn">📒</button>
+    <button class="btn btn-finish" id="finishBtn">✅ பில் முடி</button>
+  </div>
+</div>
+
+<!-- Settings sheet -->
+<div class="overlay" id="settingsOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">பொருட்கள் திருத்த <button class="icon-btn" id="closeSettings">✕</button></div>
+
+    <div class="field-label">கடை பெயர்</div>
+    <input type="text" id="shopNameInput" placeholder="என் கடை">
+
+    <div class="field-label">புதிய பொருள் பெயர்</div>
+    <div class="field-row">
+      <input type="text" id="newItemName" placeholder="எ.கா. அரிசி">
+      <button class="mic-mini" id="newItemMic">🎙️</button>
+    </div>
+    <div class="field-label">விலை (₹)</div>
+    <input type="number" id="newItemPrice" inputmode="decimal" placeholder="எ.கா. 50">
+    <button class="save-btn" id="addItemBtn">+ பொருள் சேர்</button>
+
+    <div class="field-label" style="margin-top:20px;">இருக்கும் பொருட்கள்</div>
+    <div id="existingItemsList"></div>
+
+    <div class="divider-note">💡 பொருள் பெயரை மைக் பட்டன் மூலம் பேசி நிரப்பலாம். விலையை மட்டும் தட்டச்சு செய்யவும்.</div>
+  </div>
+</div>
+
+<!-- History sheet -->
+<div class="overlay" id="historyOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">இன்றைய விற்பனை (24 மணி நேர அறிக்கை) <button class="icon-btn" id="closeHistory">✕</button></div>
+    <div class="pie-wrap" id="pieWrap" style="display:none;">
+      <canvas id="pieCanvas" width="180" height="180"></canvas>
+      <div class="pie-legend" id="pieLegend"></div>
+    </div>
+    <div id="historyList"></div>
+    <div class="history-day-total" id="historyDayTotal"></div>
+    <button class="save-btn" id="downloadCsvBtn" style="margin-top:14px;">⬇️ Excel-ஆக பதிவிறக்கம் (CSV)</button>
+  </div>
+</div>
+
+<!-- Payment sheet -->
+<div class="overlay" id="paymentOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">பணம் பெறுதல் <button class="icon-btn" id="closePayment">✕</button></div>
+
+    <div class="pay-total-display">
+      <div class="pay-total-label">பில் தொகை</div>
+      <div class="pay-total-amount">₹<span id="payTotalAmt">0</span></div>
+    </div>
+
+    <div class="pay-method-row">
+      <button class="pay-method-btn" id="payCashBtn"><span class="emoji">💵</span>பணம் (Cash)</button>
+      <button class="pay-method-btn" id="payBankBtn"><span class="emoji">🏦</span>வங்கி / UPI</button>
+      <button class="pay-method-btn" id="payCreditBtn"><span class="emoji">📒</span>வழக்கமான வாடிக்கையாளர்</button>
+    </div>
+
+    <div class="cash-panel" id="cashPanel">
+      <div class="field-label">பெறப்பட்ட தொகை (₹)</div>
+      <div class="field-row">
+        <input type="number" id="cashReceived" inputmode="decimal" placeholder="எ.கா. 200">
+        <button class="mic-mini" id="payMic">🎙️</button>
+      </div>
+      <div class="denom-row" id="denomRow"></div>
+      <div class="balance-panel" id="balancePanel" style="display:none;">
+        <div class="balance-label" id="balanceLabel">திரும்ப கொடுக்க வேண்டியது</div>
+        <div class="balance-amount give" id="balanceAmount">₹0</div>
+      </div>
+    </div>
+
+    <div class="bank-panel" id="bankPanel">
+      வங்கி / UPI மூலம் முழு தொகையும் பெறப்பட்டதாக பதிவு செய்யப்படும்.
+    </div>
+
+    <div class="bank-panel" id="creditPanel">
+      <div class="field-label" style="margin-top:0;color:var(--chalk);text-align:left;">வாடிக்கையாளர் பெயர்</div>
+      <input type="text" id="creditCustomerName" placeholder="எ.கா. முருகன்">
+      <div class="divider-note">💡 இந்த தொகை பணமாக இன்னும் பெறப்படவில்லை — பெயருடன் பதிவு செய்யப்படும்.</div>
+    </div>
+
+    <button class="confirm-pay-btn" id="confirmPayBtn" disabled>முடிந்தது ✅</button>
+  </div>
+</div>
+
+<!-- Receipt sheet (shown after payment is confirmed) -->
+<div class="overlay" id="receiptOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">பில் முடிந்தது ✅</div>
+    <div id="receiptSummary"></div>
+    <div style="display:flex;gap:10px;margin-top:16px;">
+      <button class="btn btn-history" id="receiptPrintBtn" style="flex:1;">🖨️ பிரிண்ட்</button>
+      <button class="btn btn-history" id="receiptRepeatBtn" style="flex:1;">🔁 மீண்டும்</button>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:10px;">
+      <button class="btn btn-history" id="sendWhatsappBtn" style="flex:1;font-size:14px;">💬 WhatsApp</button>
+      <button class="btn btn-history" id="sendSmsBtn" style="flex:1;font-size:14px;">✉️ SMS</button>
+    </div>
+    <button class="save-btn" id="receiptCloseBtn" style="margin-top:10px;">அடுத்த வாடிக்கையாளர் ➜</button>
+  </div>
+</div>
+
+<div id="printArea" style="display:none;"></div>
+
+<!-- Activation lock screen -->
+<div class="overlay lock-overlay" id="lockOverlay">
+  <div class="lock-box">
+    <div class="lock-emoji">🔒</div>
+    <h2>இலவச பயன்பாட்டு காலம் முடிந்தது</h2>
+    <p>இந்த ஆப்பை தொடர்ந்து பயன்படுத்த, விற்பனையாளரிடம் இருந்து பெற்ற Activation Code-ஐ கீழே பதிவு செய்யவும்.</p>
+    <div class="lock-error" id="lockError"></div>
+    <input type="text" id="lockCodeInput" inputmode="numeric" placeholder="எ.கா. 1234-5678" maxlength="9">
+    <button class="save-btn" id="lockSubmitBtn" style="margin-top:0;">செயல்படுத்து ✅</button>
+  </div>
+</div>
+
+<script>
+
+(function(){
+  const STORAGE_KEY_ITEMS = "kadai:items";
+  const STORAGE_KEY_SHOPNAME = "kadai:shopname";
+  const STORAGE_KEY_CURRENT_BILL = "kadai:currentbill";
+  const todayKey = () => "kadai:sales:" + new Date().toISOString().slice(0,10);
+
+  const DEFAULT_ITEMS = [
+    {id:"1", name:"அரிசி", price:55},
+    {id:"2", name:"சர்க்கரை", price:45},
+    {id:"3", name:"உப்பு", price:20},
+    {id:"4", name:"பருப்பு", price:110},
+    {id:"5", name:"எண்ணெய்", price:150},
+    {id:"6", name:"பால் பாக்கெட்", price:28},
+    {id:"7", name:"தேநீர் பொடி", price:60},
+    {id:"8", name:"பிஸ்கட்", price:10},
+    {id:"9", name:"சோப்பு", price:15},
+    {id:"10", name:"வெங்காயம்", price:35}
+  ];
+
+  const NUMBER_WORDS = {
+    "பூஜ்ஜியம்":0,"சுழி":0,
+    "ஒன்று":1,"ஒரு":1,"ஓர்":1,
+    "இரண்டு":2,"ரெண்டு":2,
+    "மூன்று":3,"மூணு":3,
+    "நான்கு":4,"நாலு":4,
+    "ஐந்து":5,"அஞ்சு":5,
+    "ஆறு":6,
+    "ஏழு":7,
+    "எட்டு":8,
+    "ஒன்பது":9,"ஒன்பதொ":9,
+    "பத்து":10,
+    "பதினொன்று":11,"பதினொன்னு":11,
+    "பன்னிரண்டு":12,
+    "பதிமூன்று":13,
+    "பதினான்கு":14,"பதினாலு":14,
+    "பதினைந்து":15,"பதினஞ்சு":15,
+    "பதினாறு":16,
+    "பதினேழு":17,
+    "பதினெட்டு":18,
+    "பத்தொன்பது":19,
+    "இருபது":20,
+    "இருபத்தைந்து":25,
+    "முப்பது":30,
+    "நாற்பது":40,"நாப்பது":40,
+    "ஐம்பது":50,
+    "அறுபது":60,
+    "எழுபது":70,
+    "எண்பது":80,
+    "தொண்ணூறு":90,
+    "நூறு":100,
+    "அரை":0.5,
+    "கால்":0.25,
+    "ஒன்றரை":1.5,"ஒன்னரை":1.5,
+    "இரண்டரை":2.5,"ரெண்டரை":2.5,
+    "மூன்றரை":3.5,"மூணரை":3.5,
+    "நான்கரை":4.5,"நாலரை":4.5,
+    "ஐந்தரை":5.5,"அஞ்சரை":5.5,
+    "இருநூறு":200,
+    "முந்நூறு":300,"முன்னூறு":300,
+    "நானூறு":400,
+    "ஐநூறு":500,"ஐந்நூறு":500,
+    "அறுநூறு":600,
+    "எழுநூறு":700,
+    "எண்ணூறு":800,
+    "தொள்ளாயிரம்":900,
+    "ஆயிரம்":1000,
+    "இரண்டாயிரம்":2000,
+    "ஐயாயிரம்":5000
+  };
+
+  function extractAmountFromTranscript(transcript){
+    const digitMatch = transcript.replace(/[^\d.]+/g, " ").trim().match(/\d+(\.\d+)?/);
+    if(digitMatch) return parseFloat(digitMatch[0]);
+    const tokens = transcript.replace(/\s+/g," ").trim().split(" ");
+    for(const t of tokens){
+      const v = tokenToNumber(t);
+      if(v !== null && v > 0) return v;
+    }
+    return null;
+  }
+
+  let items = [];
+  let bill = [];
+  let shopName = "என் கடை";
+  let recognition = null;
+  let listeningTarget = null;
+
+  const $ = (id) => document.getElementById(id);
+
+  async function loadState(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY_ITEMS);
+      items = raw ? JSON.parse(raw) : DEFAULT_ITEMS.slice();
+    }catch(e){ items = DEFAULT_ITEMS.slice(); }
+    try{
+      const raw2 = localStorage.getItem(STORAGE_KEY_SHOPNAME);
+      shopName = raw2 || "என் கடை";
+    }catch(e){ shopName = "என் கடை"; }
+    $("shopNameDisplay").textContent = shopName;
+    $("shopNameInput").value = shopName;
+    renderItems();
+    restoreCurrentBillIfAny();
+  }
+
+  async function saveItems(){
+    try{ localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(items)); }catch(e){}
+  }
+  async function saveShopName(){
+    try{ localStorage.setItem(STORAGE_KEY_SHOPNAME, shopName); }catch(e){}
+  }
+
+  // ---- Persist the in-progress bill so a phone call / backgrounded tab
+  // ---- never wipes out items the shopkeeper already added ----
+  function persistCurrentBill(){
+    try{
+      if(bill.length === 0){
+        localStorage.removeItem(STORAGE_KEY_CURRENT_BILL);
+      } else {
+        localStorage.setItem(STORAGE_KEY_CURRENT_BILL, JSON.stringify(bill));
+      }
+    }catch(e){}
+  }
+
+  function restoreCurrentBillIfAny(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY_CURRENT_BILL);
+      if(raw){
+        const saved = JSON.parse(raw);
+        if(Array.isArray(saved) && saved.length > 0){
+          bill = saved;
+          renderBill();
+          showResumeBanner(saved.length);
+        }
+      }
+    }catch(e){}
+  }
+
+  function showResumeBanner(count){
+    let banner = document.querySelector(".resume-banner");
+    if(!banner){
+      banner = document.createElement("div");
+      banner.className = "resume-banner";
+      document.body.insertBefore(banner, document.body.firstChild);
+    }
+    banner.innerHTML = "⏸️ முந்தைய பில் (" + count + " பொருட்கள்) மீட்டெடுக்கப்பட்டது" +
+      ' <button id="dismissResumeBanner">சரி</button>';
+    const dismissBtn = $("dismissResumeBanner");
+    if(dismissBtn) dismissBtn.addEventListener("click", () => banner.remove());
+    setTimeout(() => { if(banner && banner.parentNode) banner.remove(); }, 6000);
+  }
+
+  function renderItems(){
+    const grid = $("itemsGrid");
+    if(items.length === 0){
+      grid.innerHTML = "";
+      grid.insertAdjacentHTML("afterend", "");
+      $("itemsGrid").outerHTML = '<div class="empty-items" id="itemsGrid">பொருட்கள் இல்லை. ⚙️ பட்டனை தட்டி பொருட்களை சேர்க்கவும்.</div>';
+      return;
+    }
+    grid.innerHTML = items.map(it => `
+      <div class="item-card" data-id="${it.id}">
+        <span class="item-add-badge">+1</span>
+        <div class="item-name">${escapeHtml(it.name)}</div>
+        <div class="item-price">₹${it.price}</div>
+      </div>
+    `).join("");
+    grid.querySelectorAll(".item-card").forEach(card => {
+      card.addEventListener("click", () => {
+        addToBill(card.dataset.id, 1);
+        card.classList.add("bump");
+        setTimeout(()=>card.classList.remove("bump"), 350);
+      });
+    });
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+
+  function addToBill(itemId, qty){
+    const item = items.find(i => i.id === itemId);
+    if(!item) return;
+    const existing = bill.find(b => b.itemId === itemId);
+    if(existing){ existing.qty += qty; }
+    else{ bill.push({itemId, name:item.name, price:item.price, qty}); }
+    renderBill();
+  }
+
+  function addCustomToBill(name, price, qty){
+    const existing = bill.find(b => b.itemId === null && b.name === name && b.price === price);
+    if(existing){ existing.qty += qty; }
+    else{ bill.push({itemId:null, name, price, qty}); }
+    renderBill();
+  }
+
+  function removeBillRow(index){
+    bill.splice(index,1);
+    renderBill();
+  }
+
+  function editBillRow(index){
+    const row = bill[index];
+    if(!row) return;
+    const newQty = prompt("புதிய எண்ணிக்கை — " + row.name, row.qty);
+    if(newQty === null) return;
+    const v = parseFloat(newQty);
+    if(isNaN(v) || v <= 0){
+      removeBillRow(index);
+      return;
+    }
+    row.qty = v;
+    renderBill();
+  }
+
+  function renderBill(){
+    const box = $("billBox");
+    if(bill.length === 0){
+      box.innerHTML = '<div class="bill-empty">இன்னும் பொருள் சேர்க்கவில்லை</div>';
+    } else {
+      box.innerHTML = bill.map((b,idx) => `
+        <div class="bill-row">
+          <div class="bill-row-name">${escapeHtml(b.name)} × <b>${formatQty(b.qty)}</b></div>
+          <div class="bill-row-right">
+            <div class="bill-row-amt">₹${(b.price*b.qty).toFixed(0)}</div>
+            <button class="edit-x" data-idx="${idx}">✏️</button>
+            <button class="del-x" data-idx="${idx}">✕</button>
+          </div>
+        </div>
+      `).join("");
+      box.querySelectorAll(".edit-x").forEach(btn => {
+        btn.addEventListener("click", () => editBillRow(parseInt(btn.dataset.idx)));
+      });
+      box.querySelectorAll(".del-x").forEach(btn => {
+        btn.addEventListener("click", () => removeBillRow(parseInt(btn.dataset.idx)));
+      });
+    }
+    const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
+    $("totalAmt").textContent = total.toFixed(0);
+    const totalQty = bill.reduce((s,b)=>s+b.qty,0);
+    $("itemCountLine").textContent = bill.length === 0
+      ? "0 பொருட்கள்"
+      : bill.length + " வகை பொருட்கள் (மொத்தம் " + formatQty(totalQty) + ")";
+    persistCurrentBill();
+  }
+
+  function formatQty(q){
+    return (q % 1 === 0) ? String(q) : String(q);
+  }
+
+  const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let keepListening = false;
+  let activeSingleShot = null;
+
+  function ensureMainRecognition(){
+    if(!SpeechRecognitionCtor) return null;
+    if(recognition) return recognition;
+    recognition = new SpeechRecognitionCtor();
+    recognition.lang = "ta-IN";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 3;
+    recognition.onresult = (e) => {
+      const transcript = e.results[e.results.length-1][0].transcript.trim();
+      handleMainTranscript(transcript);
+    };
+    recognition.onerror = (e) => {
+      if(e.error === "no-speech" && keepListening){
+        return;
+      }
+      if((e.error === "audio-capture" || e.error === "not-allowed" || e.error === "aborted") && keepListening){
+        // Likely a phone call (or another app) grabbed the microphone.
+        // We keep keepListening = true so it auto-resumes once the mic is free.
+        // Importantly, the bill array is untouched here and is already
+        // persisted to localStorage, so nothing gets lost.
+        setStatus("📞 மைக் கிடைக்கவில்லை (call/வேறு ஆப்). மைக் திரும்பக் கிடைத்தவுடன் தொடரும்... பில் பாதுகாப்பாக உள்ளது.");
+        return;
+      }
+      setStatus(micErrorMessage(e.error));
+      keepListening = false;
+      stopListeningUI();
+    };
+    recognition.onend = () => {
+      if(keepListening){
+        setTimeout(() => {
+          if(keepListening){
+            try{ recognition.start(); }catch(e){
+              // mic still busy (call may still be active) - retry shortly
+              setTimeout(() => { if(keepListening){ try{ recognition.start(); }catch(e2){} } }, 1500);
+            }
+          }
+        }, 250);
+      } else {
+        stopListeningUI();
+      }
+    };
+    return recognition;
+  }
+
+  function micErrorMessage(err){
+    const reasons = {
+      "not-allowed": "மைக் அனுமதி மறுக்கப்பட்டது. Chrome அமைப்புகளில் மைக் அனுமதி கொடுக்கவும்.",
+      "service-not-allowed": "இந்த பக்கம் https இல்லாததால் மைக் வேலை செய்யவில்லை. கீழே உள்ள வழிமுறையைப் பின்பற்றவும்.",
+      "audio-capture": "மைக் கிடைக்கவில்லை. வேறு ஆப் மைக்கை பயன்படுத்துகிறதா என பாருங்கள்.",
+      "network": "இணைய இணைப்பு இல்லை. WiFi/மொபைல் டேட்டாவை சரிபார்க்கவும்.",
+      "no-speech": "எதுவும் கேட்கவில்லை. மீண்டும் தட்டி பேசவும்."
+    };
+    return reasons[err] || ("மைக் பிழை (" + err + "). மீண்டும் முயற்சி செய்யவும்.");
+  }
+
+  function stopMainListening(){
+    keepListening = false;
+    listeningTarget = null;
+    if(recognition){ try{ recognition.stop(); }catch(e){} }
+    $("micBtn").classList.remove("listening");
+  }
+
+  function stopActiveSingleShot(){
+    if(activeSingleShot){
+      const {recognition:rec, btnEl} = activeSingleShot;
+      try{ rec.onend = null; rec.onerror = null; rec.onresult = null; rec.stop(); }catch(e){}
+      if(btnEl) btnEl.classList.remove("listening");
+      activeSingleShot = null;
+    }
+  }
+
+  function startSingleShotMic(target, btnEl, onTranscript){
+    if(!SpeechRecognitionCtor){
+      setStatus("இந்த பிரவுசரில் மைக் கிடைக்கவில்லை. Chrome பயன்படுத்தவும்.");
+      return;
+    }
+    if(activeSingleShot && activeSingleShot.target === target){
+      stopActiveSingleShot();
+      return;
+    }
+    stopMainListening();
+    stopActiveSingleShot();
+
+    const rec = new SpeechRecognitionCtor();
+    rec.lang = "ta-IN";
+    rec.interimResults = false;
+    rec.maxAlternatives = 3;
+    rec.onresult = (e) => {
+      const transcript = e.results[e.results.length-1][0].transcript.trim();
+      onTranscript(transcript);
+    };
+    rec.onerror = (e) => {
+      setStatus(micErrorMessage(e.error));
+      if(btnEl) btnEl.classList.remove("listening");
+      activeSingleShot = null;
+    };
+    rec.onend = () => {
+      if(btnEl) btnEl.classList.remove("listening");
+      activeSingleShot = null;
+    };
+    activeSingleShot = {recognition: rec, target, btnEl};
+    if(btnEl) btnEl.classList.add("listening");
+    try{ rec.start(); }catch(e){
+      setStatus("மைக் தொடங்க முடியவில்லை. சிறிது நேரம் கழித்து மீண்டும் தட்டவும்.");
+      activeSingleShot = null;
+      if(btnEl) btnEl.classList.remove("listening");
+    }
+  }
+
+  function stopListeningUI(){
+    $("micBtn").classList.remove("listening");
+    stopActiveSingleShot();
+    listeningTarget = null;
+  }
+
+  function setStatus(text){
+    $("statusLine").textContent = text;
+  }
+
+  function speak(text){
+    try{
+      if(!window.speechSynthesis) return;
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = "ta-IN";
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(u);
+    }catch(e){}
+  }
+
+  function tokenToNumber(tok){
+    const clean = tok.replace(/[.,]/g,"");
+    if(NUMBER_WORDS.hasOwnProperty(clean)) return NUMBER_WORDS[clean];
+    if(/^\d+(\.\d+)?$/.test(clean)) return parseFloat(clean);
+    return null;
+  }
+
+  function parseMultipleItems(transcript){
+    const normalized = transcript.replace(/\s+/g," ").trim();
+    if(!normalized) return [];
+    const tokens = normalized.split(" ");
+    const itemTokenLists = items
+      .map(it => ({item: it, toks: it.name.split(" ")}))
+      .sort((a,b) => b.toks.length - a.toks.length);
+
+    const consumed = new Array(tokens.length).fill(false);
+    const results = [];
+    let i = 0;
+    while(i < tokens.length){
+      if(consumed[i]){ i++; continue; }
+      let matchedItem = null, matchedLen = 0;
+      for(const {item, toks} of itemTokenLists){
+        if(i + toks.length > tokens.length) continue;
+        let ok = true;
+        for(let k=0;k<toks.length;k++){
+          if(tokens[i+k] !== toks[k]){ ok = false; break; }
+        }
+        if(ok){ matchedItem = item; matchedLen = toks.length; break; }
+      }
+      if(matchedItem){
+        for(let k=0;k<matchedLen;k++) consumed[i+k] = true;
+        let qty = null;
+        const afterIdx = i + matchedLen;
+        if(afterIdx < tokens.length && !consumed[afterIdx]){
+          const v = tokenToNumber(tokens[afterIdx]);
+          if(v !== null){ qty = v; consumed[afterIdx] = true; }
+        }
+        if(qty === null && i > 0 && !consumed[i-1]){
+          const v = tokenToNumber(tokens[i-1]);
+          if(v !== null){ qty = v; consumed[i-1] = true; }
+        }
+        if(qty === null || qty === 0) qty = 1;
+        results.push({item: matchedItem, qty});
+        i = afterIdx;
+      } else {
+        i++;
+      }
+    }
+    return results;
+  }
+
+  const CURRENCY_WORDS = new Set(["ரூபாய்","ரூபாய","ரூ","ரூபாய்க்கு","rs","Rs","RS","₹","rupees","rupee"]);
+  const MARKER_WORDS = new Set(["விலை","எண்ணிக்கை"]);
+  function parseAdHocItem(transcript){
+    const normalized = transcript.replace(/\s+/g," ").trim();
+    if(!normalized) return null;
+    const tokens = normalized.split(" ");
+    const numberTokens = [];
+    const nameTokens = [];
+    tokens.forEach(tok => {
+      if(CURRENCY_WORDS.has(tok) || MARKER_WORDS.has(tok)) return;
+      const v = tokenToNumber(tok);
+      if(v !== null){ numberTokens.push(v); }
+      else { nameTokens.push(tok); }
+    });
+    const name = nameTokens.join(" ").trim();
+    if(!name || numberTokens.length === 0) return null;
+    let price, qty;
+    if(numberTokens.length >= 2){
+      price = numberTokens[0];
+      qty = numberTokens[1];
+    } else {
+      price = numberTokens[0];
+      qty = 1;
+    }
+    if(price <= 0) return null;
+    if(qty <= 0) qty = 1;
+    return {name, price, qty};
+  }
+
+  function handleMainTranscript(transcript){
+    setStatus('கேட்டது: "' + transcript + '"');
+    const found = parseMultipleItems(transcript);
+    if(found.length === 0){
+      const adHoc = parseAdHocItem(transcript);
+      if(adHoc){
+        addCustomToBill(adHoc.name, adHoc.price, adHoc.qty);
+        const amt = (adHoc.price*adHoc.qty).toFixed(0);
+        setStatus(adHoc.name + " × " + formatQty(adHoc.qty) + " (₹" + amt + ") — புதிய பொருள் சேர்க்கப்பட்டது");
+        speak(adHoc.name + " " + formatQty(adHoc.qty) + ", ரூபாய் " + amt + " சேர்க்கப்பட்டது");
+        return;
+      }
+      setStatus('பொருள் கிடைக்கவில்லை. "ஷாம்பு 2 ரூபாய் 12" போல் விலையும் எண்ணிக்கையும் சொல்லி முயற்சிக்கவும், அல்லது கீழே உள்ள படிவத்தில் சேர்க்கவும்.');
+      speak("பொருள் புரியவில்லை");
+      return;
+    }
+    const spokenParts = [];
+    const statusParts = [];
+    for(const {item, qty} of found){
+      addToBill(item.id, qty);
+      const amt = (item.price*qty).toFixed(0);
+      spokenParts.push(item.name + " " + formatQty(qty));
+      statusParts.push(item.name + " × " + formatQty(qty) + " (₹" + amt + ")");
+    }
+    setStatus(statusParts.join(", ") + " சேர்க்கப்பட்டது");
+    speak(spokenParts.join(", ") + " சேர்க்கப்பட்டது");
+  }
+
+  $("micBtn").addEventListener("click", () => {
+    const rec = ensureMainRecognition();
+    if(!rec){
+      setStatus("இந்த பிரவுசரில் மைக் கிடைக்கவில்லை. Chrome பயன்படுத்தவும்.");
+      return;
+    }
+    if(keepListening){
+      stopMainListening();
+      setStatus("மைக் நிறுத்தப்பட்டது");
+      return;
+    }
+    stopActiveSingleShot();
+    keepListening = true;
+    listeningTarget = "main";
+    $("micBtn").classList.add("listening");
+    setStatus("தொடர்ந்து கேட்கிறேன்... பொருட்களை ஒவ்வொன்றாக சொல்லுங்கள். நிறுத்த மீண்டும் தட்டவும்.");
+    try{ rec.start(); }catch(e){}
+  });
+
+  $("newItemMic").addEventListener("click", () => {
+    startSingleShotMic("newItem", $("newItemMic"), (transcript) => {
+      $("newItemName").value = transcript;
+    });
+  });
+
+  $("qaMic").addEventListener("click", () => {
+    startSingleShotMic("qaName", $("qaMic"), (transcript) => {
+      $("qaName").value = transcript;
+    });
+  });
+
+  $("qaPriceMic").addEventListener("click", () => {
+    startSingleShotMic("qaPrice", $("qaPriceMic"), (transcript) => {
+      const v = extractAmountFromTranscript(transcript);
+      if(v !== null) $("qaPrice").value = v;
+      else setStatus('விலை புரியவில்லை. மீண்டும் சொல்லுங்கள்.');
+    });
+  });
+
+  $("qaQtyMic").addEventListener("click", () => {
+    startSingleShotMic("qaQty", $("qaQtyMic"), (transcript) => {
+      const v = extractAmountFromTranscript(transcript);
+      if(v !== null) $("qaQty").value = v;
+      else setStatus('எண்ணிக்கை புரியவில்லை. மீண்டும் சொல்லுங்கள்.');
+    });
+  });
+
+  $("qaAddBtn").addEventListener("click", () => {
+    const name = $("qaName").value.trim();
+    const price = parseFloat($("qaPrice").value);
+    let qty = parseFloat($("qaQty").value);
+    if(isNaN(qty) || qty <= 0) qty = 1;
+    if(!name || isNaN(price) || price <= 0){
+      setStatus("பொருள் பெயரும் விலையும் சரியாக இடவும்");
+      return;
+    }
+    addCustomToBill(name, price, qty);
+    setStatus(name + " × " + formatQty(qty) + " (₹" + (price*qty).toFixed(0) + ") பில்லில் சேர்க்கப்பட்டது");
+    $("qaName").value = "";
+    $("qaPrice").value = "";
+    $("qaQty").value = "1";
+  });
+
+  let payMethod = null;
+
+  $("finishBtn").addEventListener("click", () => {
+    if(bill.length === 0){
+      setStatus("பில் காலியாக உள்ளது");
+      return;
+    }
+    const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
+    const totalQty = bill.reduce((s,b)=>s+b.qty,0);
+    const itemList = bill.map(b => b.name + " " + formatQty(b.qty)).join(", ");
+    const reviewSpeech = itemList + ". மொத்தம் " + bill.length + " வகை பொருட்கள், " + formatQty(totalQty) + " எண்ணிக்கை. மொத்த தொகை ரூபாய் " + total.toFixed(0);
+    setStatus("சரிபார்க்கவும்: " + itemList + " — மொத்தம் ₹" + total.toFixed(0));
+    speak(reviewSpeech);
+    openPaymentSheet();
+  });
+
+  function openPaymentSheet(){
+    const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
+    payMethod = null;
+    $("payTotalAmt").textContent = total.toFixed(0);
+    $("payCashBtn").classList.remove("active");
+    $("payBankBtn").classList.remove("active");
+    $("payCreditBtn").classList.remove("active");
+    $("cashPanel").classList.remove("show");
+    $("bankPanel").classList.remove("show");
+    $("creditPanel").classList.remove("show");
+    $("cashReceived").value = "";
+    $("creditCustomerName").value = "";
+    $("balancePanel").style.display = "none";
+    $("confirmPayBtn").disabled = true;
+
+    const denomRow = $("denomRow");
+    const denoms = [...new Set([50,100,200,500,2000, Math.ceil(total/10)*10])].filter(d=>d>0).sort((a,b)=>a-b);
+    denomRow.innerHTML = denoms.map(d => `<button class="denom-btn" data-amt="${d}">₹${d}</button>`).join("");
+    denomRow.querySelectorAll(".denom-btn").forEach(btn=>{
+      btn.addEventListener("click", () => {
+        $("cashReceived").value = btn.dataset.amt;
+        updateBalanceDisplay();
+      });
+    });
+
+    $("paymentOverlay").classList.add("show");
+    speak("பில் தொகை ரூபாய் " + total.toFixed(0) + ". எவ்வளவு பணம் பெற்றீர்கள்?");
+  }
+
+  $("payMic").addEventListener("click", () => {
+    startSingleShotMic("payment", $("payMic"), (transcript) => {
+      handlePaymentTranscript(transcript);
+    });
+  });
+
+  function handlePaymentTranscript(transcript){
+    const amt = extractAmountFromTranscript(transcript);
+    const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
+    if(amt === null || amt <= 0){
+      setStatus('தொகை புரியவில்லை. மீண்டும் சொல்லுங்கள் அல்லது தட்டச்சு செய்யவும்.');
+      speak("தொகை புரியவில்லை, மீண்டும் சொல்லுங்கள்");
+      return;
+    }
+    payMethod = "cash";
+    $("payCashBtn").classList.add("active");
+    $("payBankBtn").classList.remove("active");
+    $("cashPanel").classList.add("show");
+    $("bankPanel").classList.remove("show");
+    $("cashReceived").value = amt;
+    updateBalanceDisplay();
+    const diff = amt - total;
+    if(diff >= 0){
+      speak("பில் தொகை " + total.toFixed(0) + ". நீங்கள் " + amt.toFixed(0) + " கொடுத்தீர்கள். மீதம் " + diff.toFixed(0) + " கொடுக்கவும்.");
+      setStatus("மீதம் ₹" + diff.toFixed(0) + " கொடுக்கவும்");
+    } else {
+      speak("பில் தொகை " + total.toFixed(0) + ". நீங்கள் " + amt.toFixed(0) + " கொடுத்தீர்கள். இன்னும் ரூபாய் " + Math.abs(diff).toFixed(0) + " தேவை.");
+      setStatus("இன்னும் தேவை ₹" + Math.abs(diff).toFixed(0));
+    }
+  }
+
+  $("payCashBtn").addEventListener("click", () => {
+    payMethod = "cash";
+    $("payCashBtn").classList.add("active");
+    $("payBankBtn").classList.remove("active");
+    $("payCreditBtn").classList.remove("active");
+    $("cashPanel").classList.add("show");
+    $("bankPanel").classList.remove("show");
+    $("creditPanel").classList.remove("show");
+    updateBalanceDisplay();
+  });
+
+  $("payBankBtn").addEventListener("click", () => {
+    payMethod = "bank";
+    $("payBankBtn").classList.add("active");
+    $("payCashBtn").classList.remove("active");
+    $("payCreditBtn").classList.remove("active");
+    $("bankPanel").classList.add("show");
+    $("cashPanel").classList.remove("show");
+    $("creditPanel").classList.remove("show");
+    $("confirmPayBtn").disabled = false;
+  });
+
+  $("payCreditBtn").addEventListener("click", () => {
+    payMethod = "credit";
+    $("payCreditBtn").classList.add("active");
+    $("payCashBtn").classList.remove("active");
+    $("payBankBtn").classList.remove("active");
+    $("creditPanel").classList.add("show");
+    $("cashPanel").classList.remove("show");
+    $("bankPanel").classList.remove("show");
+    $("confirmPayBtn").disabled = $("creditCustomerName").value.trim() === "";
+  });
+
+  $("creditCustomerName").addEventListener("input", () => {
+    if(payMethod === "credit"){
+      $("confirmPayBtn").disabled = $("creditCustomerName").value.trim() === "";
+    }
+  });
+
+  $("cashReceived").addEventListener("input", updateBalanceDisplay);
+
+  function updateBalanceDisplay(){
+    const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
+    const received = parseFloat($("cashReceived").value);
+    const panel = $("balancePanel");
+    if(isNaN(received) || received <= 0){
+      panel.style.display = "none";
+      $("confirmPayBtn").disabled = true;
+      return;
+    }
+    panel.style.display = "block";
+    const diff = received - total;
+    const amtEl = $("balanceAmount");
+    if(diff >= 0){
+      $("balanceLabel").textContent = "திரும்ப கொடுக்க வேண்டியது";
+      amtEl.textContent = "₹" + diff.toFixed(0);
+      amtEl.classList.remove("short");
+      amtEl.classList.add("give");
+      $("confirmPayBtn").disabled = false;
+    } else {
+      $("balanceLabel").textContent = "இன்னும் தேவை";
+      amtEl.textContent = "₹" + Math.abs(diff).toFixed(0);
+      amtEl.classList.remove("give");
+      amtEl.classList.add("short");
+      $("confirmPayBtn").disabled = false;
+    }
+  }
+
+  $("confirmPayBtn").addEventListener("click", async () => {
+    const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
+    let received = total, balance = 0, customerName = null;
+    if(payMethod === "cash"){
+      received = parseFloat($("cashReceived").value) || 0;
+      balance = received - total;
+    } else if(payMethod === "bank"){
+      received = total; balance = 0;
+    } else if(payMethod === "credit"){
+      customerName = $("creditCustomerName").value.trim();
+      if(!customerName) return;
+      received = 0; balance = 0;
+    } else {
+      return;
+    }
+    const receipt = await finalizeBill(payMethod, total, received, balance, customerName);
+    $("paymentOverlay").classList.remove("show");
+    openReceiptSheet(receipt);
+  });
+
+  $("closePayment").addEventListener("click", () => {
+    $("paymentOverlay").classList.remove("show");
+  });
+
+  let lastFinishedItems = null;
+
+  async function finalizeBill(method, total, received, balance, customerName){
+    const itemTypes = bill.length;
+    const totalQtyFinal = bill.reduce((s,b)=>s+b.qty,0);
+    const key = todayKey();
+    let dayList = [];
+    try{
+      const raw = localStorage.getItem(key);
+      dayList = raw ? JSON.parse(raw) : [];
+    }catch(e){ dayList = []; }
+    const billNo = dayList.length + 1;
+    const itemsSnapshot = bill.map(b=>({name:b.name, qty:b.qty, price:b.price}));
+    const time = new Date().toLocaleTimeString("ta-IN",{hour:'2-digit',minute:'2-digit'});
+    dayList.push({ billNo, time, total, method, received, balance, customerName: customerName || null, items: itemsSnapshot });
+    try{ localStorage.setItem(key, JSON.stringify(dayList)); }catch(e){}
+
+    const countPhrase = itemTypes + " வகை பொருட்கள், மொத்தம் " + formatQty(totalQtyFinal) + " எண்ணிக்கை. ";
+    if(method === "cash" && balance > 0){
+      speak(countPhrase + "தொகை ரூபாய் " + total.toFixed(0) + ". திரும்ப கொடுக்க வேண்டியது ரூபாய் " + balance.toFixed(0));
+      setStatus("✅ " + itemTypes + " பொருட்கள் — திரும்ப கொடுக்க வேண்டியது ₹" + balance.toFixed(0));
+    } else if(method === "cash" && balance < 0){
+      speak(countPhrase + "இன்னும் ரூபாய் " + Math.abs(balance).toFixed(0) + " தேவை");
+      setStatus("⚠️ இன்னும் தேவை ₹" + Math.abs(balance).toFixed(0));
+    } else if(method === "credit"){
+      speak(countPhrase + "தொகை ரூபாய் " + total.toFixed(0) + ". " + customerName + " கணக்கில் பதிவு செய்யப்பட்டது");
+      setStatus("📒 " + customerName + " கணக்கில் ₹" + total.toFixed(0) + " பதிவு செய்யப்பட்டது");
+    } else {
+      speak(countPhrase + "தொகை ரூபாய் " + total.toFixed(0) + ". பில் முடிந்தது");
+      setStatus("பில் சேமிக்கப்பட்டது ✅ " + itemTypes + " பொருட்கள், ₹" + total.toFixed(0));
+    }
+    lastFinishedItems = itemsSnapshot;
+    bill = [];
+    renderBill();
+    return { billNo, time, total, method, received, balance, customerName: customerName || null, items: itemsSnapshot };
+  }
+
+  function openReceiptSheet(receipt){
+    const methodLabel = receipt.method === "cash" ? "💵 பணம் (Cash)" : (receipt.method === "bank" ? "🏦 வங்கி / UPI" : "📒 வழக்கமான வாடிக்கையாளர் (Credit)");
+    let rows = `<div class="receipt-billno">பில் எண் ${receipt.billNo} • ${receipt.time}</div>`;
+    rows += receipt.items.map(it => `
+      <div class="receipt-row"><span>${escapeHtml(it.name)} × ${formatQty(it.qty)}</span><span>₹${(it.price*it.qty).toFixed(0)}</span></div>
+    `).join("");
+    rows += `<div class="receipt-row total"><span>மொத்தம்</span><span>₹${receipt.total.toFixed(0)}</span></div>`;
+    rows += `<div class="receipt-row"><span>${methodLabel}</span><span></span></div>`;
+    if(receipt.method === "cash"){
+      rows += `<div class="receipt-row"><span>பெற்றது</span><span>₹${receipt.received.toFixed(0)}</span></div>`;
+      rows += `<div class="receipt-row"><span>${receipt.balance>=0?"மீதம் கொடுக்க வேண்டியது":"இன்னும் தேவை"}</span><span>₹${Math.abs(receipt.balance).toFixed(0)}</span></div>`;
+    } else if(receipt.method === "credit"){
+      rows += `<div class="receipt-row"><span>வாடிக்கையாளர்</span><span>${escapeHtml(receipt.customerName || "")}</span></div>`;
+    }
+    $("receiptSummary").innerHTML = rows;
+    $("receiptOverlay").dataset.current = JSON.stringify(receipt);
+    $("receiptOverlay").classList.add("show");
+  }
+
+  $("receiptRepeatBtn").addEventListener("click", () => {
+    let itemsToRepeat = lastFinishedItems;
+    if(!itemsToRepeat || itemsToRepeat.length === 0){
+      const dayList = getTodayList();
+      if(dayList.length > 0) itemsToRepeat = dayList[dayList.length - 1].items;
+    }
+    if(!itemsToRepeat || itemsToRepeat.length === 0){
+      setStatus("மீண்டும் ஏற்ற பில் எதுவும் இல்லை");
+      return;
+    }
+    bill = itemsToRepeat.map(it => ({itemId:null, name:it.name, price:it.price, qty:it.qty}));
+    renderBill();
+    $("receiptOverlay").classList.remove("show");
+    setStatus("கடைசி பில் மீண்டும் ஏற்றப்பட்டது (" + bill.length + " பொருட்கள்)");
+    speak("கடைசி பில் மீண்டும் ஏற்றப்பட்டது");
+  });
+
+  $("receiptCloseBtn").addEventListener("click", () => {
+    $("receiptOverlay").classList.remove("show");
+  });
+
+  $("receiptPrintBtn").addEventListener("click", () => {
+    const receipt = JSON.parse($("receiptOverlay").dataset.current || "{}");
+    if(!receipt.items) return;
+    printReceipt(receipt);
+  });
+
+  function printReceipt(receipt){
+    const methodLabel = receipt.method === "cash" ? "Cash" : "Bank / UPI";
+    let html = `<h2>${escapeHtml(shopName)}</h2>`;
+    html += `<div style="text-align:center;font-size:12px;">பில் எண் ${receipt.billNo} • ${new Date().toLocaleDateString("ta-IN")} ${receipt.time}</div>`;
+    html += `<div class="pr-line"></div><table>`;
+    receipt.items.forEach(it => {
+      html += `<tr><td>${escapeHtml(it.name)} x${formatQty(it.qty)}</td><td style="text-align:right;">₹${(it.price*it.qty).toFixed(0)}</td></tr>`;
+    });
+    html += `</table><div class="pr-line"></div>`;
+    html += `<table><tr class="pr-total"><td>மொத்தம்</td><td style="text-align:right;">₹${receipt.total.toFixed(0)}</td></tr></table>`;
+    html += `<div style="font-size:12px;margin-top:6px;">${methodLabel}`;
+    if(receipt.method === "cash"){
+      html += ` • பெற்றது ₹${receipt.received.toFixed(0)} • ${receipt.balance>=0?"மீதம்":"தேவை"} ₹${Math.abs(receipt.balance).toFixed(0)}`;
+    }
+    html += `</div><div class="pr-line"></div><div style="text-align:center;font-size:12px;">நன்றி! Thank you</div>`;
+    $("printArea").innerHTML = html;
+    window.print();
+  }
+
+  function buildReceiptText(receipt){
+    const methodLabel = receipt.method === "cash" ? "Cash" : "Bank / UPI";
+    let lines = [];
+    lines.push(shopName);
+    lines.push("பில் எண் #" + receipt.billNo + " - " + receipt.time);
+    lines.push("-----------------------------");
+    receipt.items.forEach(it => {
+      lines.push(it.name + " x" + formatQty(it.qty) + " - ₹" + (it.price*it.qty).toFixed(0));
+    });
+    lines.push("-----------------------------");
+    lines.push("மொத்தம்: ₹" + receipt.total.toFixed(0));
+    lines.push(methodLabel);
+    if(receipt.method === "cash"){
+      lines.push("பெற்றது: ₹" + receipt.received.toFixed(0));
+      lines.push((receipt.balance>=0?"மீதம் கொடுக்கப்பட்டது":"இன்னும் தேவை") + ": ₹" + Math.abs(receipt.balance).toFixed(0));
+    }
+    lines.push("நன்றி! Thank you 🙏");
+    return lines.join("\n");
+  }
+
+  function getCurrentReceipt(){
+    try{ return JSON.parse($("receiptOverlay").dataset.current || "{}"); }catch(e){ return {}; }
+  }
+
+  $("sendWhatsappBtn").addEventListener("click", () => {
+    const receipt = getCurrentReceipt();
+    if(!receipt.items) return;
+    const text = buildReceiptText(receipt);
+    window.open("https://wa.me/?text=" + encodeURIComponent(text), "_blank");
+  });
+
+  $("sendSmsBtn").addEventListener("click", () => {
+    const receipt = getCurrentReceipt();
+    if(!receipt.items) return;
+    const text = buildReceiptText(receipt);
+    window.location.href = "sms:?body=" + encodeURIComponent(text);
+  });
+
+  $("settingsBtn").addEventListener("click", () => {
+    renderExistingItems();
+    $("settingsOverlay").classList.add("show");
+  });
+  $("closeSettings").addEventListener("click", async () => {
+    shopName = $("shopNameInput").value.trim() || "என் கடை";
+    $("shopNameDisplay").textContent = shopName;
+    await saveShopName();
+    $("settingsOverlay").classList.remove("show");
+  });
+
+  $("addItemBtn").addEventListener("click", async () => {
+    const name = $("newItemName").value.trim();
+    const price = parseFloat($("newItemPrice").value);
+    if(!name || isNaN(price) || price <= 0){
+      setStatus("பொருள் பெயரும் விலையும் சரியாக இடவும்");
+      return;
+    }
+    items.push({id: Date.now().toString(), name, price});
+    await saveItems();
+    $("newItemName").value = "";
+    $("newItemPrice").value = "";
+    renderItems();
+    renderExistingItems();
+  });
+
+  let editingItemId = null;
+
+  function renderExistingItems(){
+    const list = $("existingItemsList");
+    if(items.length === 0){
+      list.innerHTML = '<div class="divider-note">பொருட்கள் இல்லை</div>';
+      return;
+    }
+    list.innerHTML = items.map(it => {
+      if(it.id === editingItemId){
+        return `
+        <div class="existing-item-row editing" data-id="${it.id}">
+          <input type="text" class="edit-name" value="${escapeHtml(it.name)}">
+          <input type="number" class="edit-price" inputmode="decimal" value="${it.price}">
+          <div class="row-actions">
+            <button class="mini-btn save-edit-btn" data-id="${it.id}">✔️</button>
+            <button class="mini-btn cancel-edit-btn" data-id="${it.id}">✖️</button>
+          </div>
+        </div>`;
+      }
+      return `
+      <div class="existing-item-row">
+        <div class="info">${escapeHtml(it.name)} — <b>₹${it.price}</b></div>
+        <div class="row-actions">
+          <button class="mini-btn edit-btn" data-id="${it.id}">✏️</button>
+          <button class="mini-btn del-btn" data-id="${it.id}">🗑️</button>
+        </div>
+      </div>`;
+    }).join("");
+
+    list.querySelectorAll(".del-btn").forEach(btn=>{
+      btn.addEventListener("click", async ()=>{
+        if(!confirm("இந்த பொருளை நீக்கவா?")) return;
+        items = items.filter(i=>i.id!==btn.dataset.id);
+        await saveItems();
+        renderItems();
+        renderExistingItems();
+      });
+    });
+    list.querySelectorAll(".edit-btn").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        editingItemId = btn.dataset.id;
+        renderExistingItems();
+      });
+    });
+    list.querySelectorAll(".cancel-edit-btn").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        editingItemId = null;
+        renderExistingItems();
+      });
+    });
+    list.querySelectorAll(".save-edit-btn").forEach(btn=>{
+      btn.addEventListener("click", async ()=>{
+        const row = btn.closest(".existing-item-row");
+        const it = items.find(i=>i.id===btn.dataset.id);
+        if(!it) return;
+        const newName = row.querySelector(".edit-name").value.trim();
+        const newPrice = parseFloat(row.querySelector(".edit-price").value);
+        if(!newName || isNaN(newPrice) || newPrice <= 0){
+          setStatus("பொருள் பெயரும் விலையும் சரியாக இடவும்");
+          return;
+        }
+        it.name = newName;
+        it.price = newPrice;
+        editingItemId = null;
+        await saveItems();
+        renderItems();
+        renderExistingItems();
+      });
+    });
+  }
+
+  $("historyBtn").addEventListener("click", async () => {
+    const listEl = $("historyList");
+    const dayList = getTodayList();
+    if(dayList.length === 0){
+      listEl.innerHTML = '<div class="divider-note">இன்று இன்னும் பில் இல்லை</div>';
+      $("historyDayTotal").textContent = "";
+      $("pieWrap").style.display = "none";
+    } else {
+      listEl.innerHTML = dayList.map((d, idx) => {
+        const tag = d.method === "cash" ? "💵 Cash" : (d.method === "bank" ? "🏦 Bank" : "📒 " + escapeHtml(d.customerName || "Credit"));
+        return `<div class="history-row">
+          <span>#${d.billNo || ""} ${d.time} <span class="pay-tag">${tag}</span></span>
+          <span style="display:flex;align-items:center;gap:8px;">₹${d.total.toFixed(0)}
+            <button class="mini-btn repeat-history-btn" data-idx="${idx}" title="மீண்டும்">🔁</button>
+          </span>
+        </div>`;
+      }).join("");
+      const dayTotal = dayList.reduce((s,d)=>s+d.total,0);
+      $("historyDayTotal").textContent = "இன்று மொத்தம் (" + dayList.length + " பில்): ₹" + dayTotal.toFixed(0);
+      listEl.querySelectorAll(".repeat-history-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const d = dayList[parseInt(btn.dataset.idx)];
+          if(!d) return;
+          bill = d.items.map(it => ({itemId:null, name:it.name, price:it.price, qty:it.qty}));
+          renderBill();
+          $("historyOverlay").classList.remove("show");
+          setStatus("பில் #" + d.billNo + " மீண்டும் ஏற்றப்பட்டது");
+          speak("பில் மீண்டும் ஏற்றப்பட்டது");
+        });
+      });
+      drawPaymentPieChart(dayList);
+    }
+    $("historyOverlay").classList.add("show");
+  });
+  $("closeHistory").addEventListener("click", () => {
+    $("historyOverlay").classList.remove("show");
+  });
+
+  function drawPaymentPieChart(dayList){
+    const totals = {cash:0, bank:0, credit:0};
+    dayList.forEach(d => {
+      if(totals.hasOwnProperty(d.method)) totals[d.method] += d.total;
+    });
+    const grand = totals.cash + totals.bank + totals.credit;
+    const wrap = $("pieWrap");
+    if(grand <= 0){ wrap.style.display = "none"; return; }
+    wrap.style.display = "flex";
+
+    const slices = [
+      {label:"💵 Cash", value:totals.cash, color:"#f2b03b"},
+      {label:"🏦 Bank / UPI", value:totals.bank, color:"#6fbf73"},
+      {label:"📒 Credit", value:totals.credit, color:"#e05252"}
+    ].filter(s => s.value > 0);
+
+    const canvas = $("pieCanvas");
+    const ctx = canvas.getContext("2d");
+    const cx = canvas.width/2, cy = canvas.height/2, r = Math.min(cx,cy) - 6;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    let start = -Math.PI/2;
+    slices.forEach(s => {
+      const angle = (s.value/grand) * Math.PI*2;
+      ctx.beginPath();
+      ctx.moveTo(cx,cy);
+      ctx.arc(cx,cy,r,start,start+angle);
+      ctx.closePath();
+      ctx.fillStyle = s.color;
+      ctx.fill();
+      start += angle;
+    });
+
+    $("pieLegend").innerHTML = slices.map(s => `
+      <div class="pie-legend-row">
+        <span class="pie-dot" style="background:${s.color}"></span>
+        <span>${s.label}</span>
+        <b>₹${s.value.toFixed(0)}</b>
+      </div>
+    `).join("");
+  }
+
+  function getTodayList(){
+    try{
+      const raw = localStorage.getItem(todayKey());
+      return raw ? JSON.parse(raw) : [];
+    }catch(e){ return []; }
+  }
+
+  function csvEscape(v){
+    const s = String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+  }
+
+  $("downloadCsvBtn").addEventListener("click", () => {
+    const dayList = getTodayList();
+    if(dayList.length === 0){ setStatus("இன்று இன்னும் பில் இல்லை"); return; }
+    const header = ["Bill No","Time","Payment","Customer","Items (name x qty @ rate)","Total","Received","Balance"];
+    const rows = dayList.map(d => [
+      d.billNo || "",
+      d.time,
+      d.method === "cash" ? "Cash" : (d.method === "bank" ? "Bank/UPI" : "Credit"),
+      d.customerName || "",
+      d.items.map(it => it.name + " x" + it.qty + " @₹" + it.price).join(" | "),
+      d.total.toFixed(0),
+      (d.received||0).toFixed(0),
+      (d.balance||0).toFixed(0)
+    ]);
+    const dayTotal = dayList.reduce((s,d)=>s+d.total,0);
+    rows.push(["", "", "", "", "TOTAL", dayTotal.toFixed(0), "", ""]);
+    const csv = [header, ...rows].map(r => r.map(csvEscape).join(",")).join("\n");
+    const blob = new Blob(["\uFEFF" + csv], {type:"text/csv;charset=utf-8;"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const dateStr = new Date().toISOString().slice(0,10);
+    a.href = url;
+    a.download = "sales-report-" + dateStr + ".csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+
+  [$("settingsOverlay"), $("historyOverlay"), $("paymentOverlay"), $("receiptOverlay")].forEach(ov => {
+    ov.addEventListener("click", (e)=>{ if(e.target === ov) ov.classList.remove("show"); });
+  });
+
+  const TRIAL_DAYS = 30;
+  const DAY_MS = 24*60*60*1000;
+
+  const CODE_CHECK_URL = "https://script.google.com/macros/s/AKfycbwmkjxRm7_6CRWUiZtjDsXfeJCKHAQ602h62c8qbvuMVu3Uw6RyuG-0qzOKotOAH7Sn/exec";
+
+  async function checkCodeOnline(code, action){
+    const url = CODE_CHECK_URL + "?code=" + encodeURIComponent(code) + "&action=" + action;
+    const res = await fetch(url);
+    return await res.json();
+  }
+
+  function checkAccess(){
+    if(localStorage.getItem("kadai:activated") === "1") return true;
+    let firstRun = localStorage.getItem("kadai:firstrun");
+    if(!firstRun){
+      firstRun = Date.now().toString();
+      try{ localStorage.setItem("kadai:firstrun", firstRun); }catch(e){}
+    }
+    const daysUsed = (Date.now() - parseInt(firstRun,10)) / DAY_MS;
+    if(daysUsed < TRIAL_DAYS){
+      const daysLeft = Math.max(1, Math.ceil(TRIAL_DAYS - daysUsed));
+      let banner = document.querySelector(".trial-banner");
+      if(!banner){
+        banner = document.createElement("div");
+        banner.className = "trial-banner";
+        document.body.insertBefore(banner, document.body.firstChild);
+      }
+      banner.textContent = "இலவச பயன்பாட்டு காலம்: இன்னும் " + daysLeft + " நாள்(கள்)";
+      return true;
+    }
+    return false;
+  }
+
+  $("lockSubmitBtn").addEventListener("click", async () => {
+    const code = $("lockCodeInput").value.trim();
+    if(!code){
+      $("lockError").textContent = "Code-ஐ உள்ளிடவும்.";
+      return;
+    }
+    $("lockError").textContent = "சரிபார்க்கிறோம்...";
+    $("lockSubmitBtn").disabled = true;
+    try{
+      const result = await checkCodeOnline(code, "activate");
+      if(result.valid){
+        try{ localStorage.setItem("kadai:activated", "1"); }catch(e){}
+        $("lockOverlay").classList.remove("show");
+        const banner = document.querySelector(".trial-banner");
+        if(banner) banner.remove();
+      } else if(result.reason === "used"){
+        $("lockError").textContent = "இந்த Code ஏற்கனவே பயன்படுத்தப்பட்டுவிட்டது.";
+      } else {
+        $("lockError").textContent = "தவறான Code. மீண்டும் சரிபார்க்கவும்.";
+      }
+    }catch(e){
+      $("lockError").textContent = "இணைய இணைப்பு இல்லை. WiFi/டேட்டாவை இயக்கி மீண்டும் முயற்சிக்கவும்.";
+    }
+    $("lockSubmitBtn").disabled = false;
+  });
+
+  // Resume the continuous mic listening automatically once the call ends
+  // and the tab is visible/focused again. The bill itself is never lost
+  // because it is persisted to localStorage on every change (persistCurrentBill).
+  document.addEventListener("visibilitychange", () => {
+    if(document.visibilityState === "visible" && keepListening && recognition){
+      try{ recognition.start(); }catch(e){}
+    }
+  });
+
+  if(!checkAccess()){
+    $("lockOverlay").classList.add("show");
+  } else {
+    loadState();
+    renderBill();
+  }
+})();
+</script>
+</body>
+</html>
