@@ -1,14 +1,7 @@
-// Minimal service worker - required by Chrome/Android to allow
-// "Add to Home Screen" installability. It doesn't need to cache
-// anything for this app to become installable.
-self.addEventListener('install', (e) => {
-  self.skipWaiting();
-});
-
-self.addEventListener('activate', (e) => {
-  self.clients.claim();
-});
-
-self.addEventListener('fetch', (e) => {
-  e.respondWith(fetch(e.request));
+// Minimal service worker — enables "Add to Home Screen" install prompts.
+// No offline caching logic yet; just needs to exist and respond to fetch.
+self.addEventListener("install", (e) => { self.skipWaiting(); });
+self.addEventListener("activate", (e) => { self.clients.claim(); });
+self.addEventListener("fetch", (e) => {
+  // Pass-through — always go to network. Safe no-op for now.
 });
