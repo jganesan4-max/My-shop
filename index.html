@@ -1155,7 +1155,13 @@
   }
 
   function tokenToNumber(tok){
-    const clean = tok.replace(/[.,]/g,"");
+    // Remove thousands-separator commas, but keep decimal points intact.
+    let clean = tok.replace(/,/g,"");
+    // Drop a trailing sentence-ending period (e.g. speech recognizer added "50."),
+    // but only when it's NOT a genuine decimal like "0.5" or "2.5".
+    if(/\.$/.test(clean) && !/^\d+\.\d+$/.test(clean)){
+      clean = clean.slice(0, -1);
+    }
     if(NUMBER_WORDS.hasOwnProperty(clean)) return NUMBER_WORDS[clean];
     if(/^\d+(\.\d+)?$/.test(clean)) return parseFloat(clean);
     return null;
