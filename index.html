@@ -251,6 +251,13 @@
     border-radius:10px;padding:10px 14px;font-size:15px;font-weight:600;
   }
   .denom-btn:active{background:var(--board-lighter);}
+  .qty-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px;}
+  .qty-btn{
+    background:var(--board);border:2px solid rgba(245,241,227,0.25);color:var(--chalk);
+    border-radius:12px;padding:16px 8px;font-size:18px;font-weight:700;
+    font-family:'Baloo Thambi 2',sans-serif;
+  }
+  .qty-btn:active{background:var(--board-lighter);border-color:var(--gold);}
   .balance-panel{margin-top:14px;border-radius:14px;padding:14px;text-align:center;background:rgba(0,0,0,0.15);}
   .balance-label{font-size:14px;color:var(--chalk-dim);}
   .balance-amount{font-family:'Baloo Thambi 2',sans-serif;font-weight:800;font-size:32px;margin-top:2px;}
@@ -317,10 +324,6 @@
   .lock-box p{color:var(--chalk-dim);font-size:15px;line-height:1.6;margin:0 0 16px;}
   .lock-box input{text-align:center;letter-spacing:2px;font-size:20px;margin-bottom:10px;}
   .lock-error{color:var(--danger);font-size:14px;min-height:20px;margin-bottom:6px;}
-  .trial-banner{
-    background:rgba(242,176,59,0.15);color:var(--gold);text-align:center;
-    font-size:13px;padding:6px 10px;border-bottom:1px dashed rgba(242,176,59,0.3);
-  }
   .install-btn{
     background:var(--gold);border:1px solid rgba(245,241,227,0.2);
     color:var(--board);border-radius:12px;height:44px;
@@ -412,11 +415,16 @@
 
     <div class="divider-note">💡 பொருள் பெயரை மைக் பட்டன் மூலம் பேசி நிரப்பலாம். விலையை மட்டும் தட்டச்சு செய்யவும்.</div>
 
-    <div class="field-label" style="margin-top:22px;">🌐 Sync Code (பல Device ரிப்போர்ட் ஒன்றாக பார்க்க)</div>
-    <input type="text" id="syncCodeInput" placeholder="Sync Code (எ.கா. உங்கள் கடை மொபைல் நம்பர்)">
-    <div class="field-label">இந்த Device / பணியாளர் பெயர்</div>
-    <input type="text" id="deviceNameInput" placeholder="எ.கா. கவுண்டர் 1 / முருகன்">
-    <div class="divider-note">💡 எல்லா device-களிலும் இதே Sync Code-ஐ போடவும். (பொருட்கள் பட்டியல் இணைக்கப்படாது — ஒவ்வொரு device-லும் தனித்தனியாக பொருட்களை சேர்க்கலாம்.) Device / பணியாளர் பெயரையும் இடவும் — பில் முடிக்கும்போது தானாக கிளவுட்-க்கு அனுப்பப்பட்டு, 📒 History-ல் "☁️ எல்லா Device முழு ரிப்போர்ட்"-ல் அந்த பெயருடன் விவரமாக காட்டப்படும்.</div>
+    <div class="field-label" style="margin-top:22px;">
+      <a href="javascript:void(0)" id="toggleSyncSection" style="color:var(--chalk-dim);text-decoration:underline;font-size:13px;">🌐 Cloud Settings (பல Device ரிப்போர்ட்) — காட்ட தட்டவும்</a>
+    </div>
+    <div id="syncSection" style="display:none;">
+      <div class="field-label">Sync Code (பல Device ரிப்போர்ட் ஒன்றாக பார்க்க)</div>
+      <input type="text" id="syncCodeInput" placeholder="Sync Code (எ.கா. உங்கள் கடை மொபைல் நம்பர்)">
+      <div class="field-label">இந்த Device / பணியாளர் பெயர்</div>
+      <input type="text" id="deviceNameInput" placeholder="எ.கா. கவுண்டர் 1 / முருகன்">
+      <div class="divider-note">💡 எல்லா device-களிலும் இதே Sync Code-ஐ போடவும். (பொருட்கள் பட்டியல் இணைக்கப்படாது — ஒவ்வொரு device-லும் தனித்தனியாக பொருட்களை சேர்க்கலாம்.) Device / பணியாளர் பெயரையும் இடவும் — பில் முடிக்கும்போது தானாக கிளவுட்-க்கு அனுப்பப்பட்டு, 📒 History-ல் "☁️ எல்லா Device முழு ரிப்போர்ட்"-ல் அந்த பெயருடன் விவரமாக காட்டப்படும்.</div>
+    </div>
   </div>
 </div>
 
@@ -450,6 +458,22 @@
     <div id="standbyList"></div>
     <div class="divider-note">💡 புதிய பில் போட வேண்டுமா? கீழே "🆕 புதிய பில்" தட்டி, தற்போதைய பில் Standby-ல் வைக்கவும். பிறகு இங்கு வந்து "தொடர்" தட்டி அதை முடிக்கலாம்.</div>
     <button class="save-btn" id="newBillFromStandbyBtn" style="margin-top:14px;">🆕 புதிய பில் (தற்போதையதை Standby-ல் வை)</button>
+  </div>
+</div>
+
+<!-- Quantity picker sheet: shown after mic recognizes a listed item, so the
+     shopkeeper confirms/picks the quantity by tapping instead of relying on
+     speech-recognized numbers (which sometimes misheard decimals). -->
+<div class="overlay" id="qtyPickerOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title" id="qtyPickerTitle">எத்தனை?</div>
+    <div class="qty-grid" id="qtyGrid"></div>
+    <div class="field-row" style="margin-top:14px;">
+      <input type="number" id="qtyCustomInput" inputmode="decimal" placeholder="வேறு எண்ணிக்கை">
+      <button class="mic-mini" id="qtyCustomAddBtn" style="flex:0 0 60px;font-size:14px;font-weight:700;">சேர்</button>
+    </div>
+    <button class="btn btn-history" id="qtyPickerCancelBtn" style="width:100%;margin-top:14px;">✕ ரத்து செய்</button>
   </div>
 </div>
 
@@ -1243,6 +1267,59 @@
     return {name, price, qty};
   }
 
+  // ---- Quantity picker: after the mic recognizes listed item(s), the
+  // shopkeeper taps the exact quantity instead of relying on a spoken
+  // number — spoken decimals/quantities weren't always recognized
+  // correctly, so this makes quantity entry reliable for listed items.
+  let qtyPickerQueue = [];
+  let qtyPickerCurrentItem = null;
+  const QTY_QUICK_OPTIONS = [0.10, 0.20, 0.25, 0.50, 0.75, 1, 2, 3, 4, 5, 10];
+
+  function openQtyPickerFor(item){
+    qtyPickerCurrentItem = item;
+    $("qtyPickerTitle").textContent = item.name + " — எத்தனை?";
+    const grid = $("qtyGrid");
+    grid.innerHTML = QTY_QUICK_OPTIONS.map(q => `<button class="qty-btn" data-qty="${q}">${formatQty(q)}</button>`).join("");
+    grid.querySelectorAll(".qty-btn").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const q = parseFloat(btn.dataset.qty);
+        confirmQtyAndAdd(q);
+      });
+    });
+    $("qtyCustomInput").value = "";
+    $("qtyPickerOverlay").classList.add("show");
+  }
+
+  function confirmQtyAndAdd(qty){
+    if(!qtyPickerCurrentItem || isNaN(qty) || qty <= 0) return;
+    const item = qtyPickerCurrentItem;
+    addToBill(item.id, qty);
+    const amt = (item.price*qty).toFixed(0);
+    setStatus(item.name + " × " + formatQty(qty) + " (₹" + amt + ") சேர்க்கப்பட்டது");
+    speak(item.name + " " + formatQty(qty) + " சேர்க்கப்பட்டது");
+    $("qtyPickerOverlay").classList.remove("show");
+    qtyPickerCurrentItem = null;
+    if(qtyPickerQueue.length > 0){
+      const next = qtyPickerQueue.shift();
+      setTimeout(()=> openQtyPickerFor(next), 350);
+    }
+  }
+
+  $("qtyCustomAddBtn").addEventListener("click", ()=>{
+    const v = parseFloat($("qtyCustomInput").value);
+    if(isNaN(v) || v <= 0){
+      setStatus("சரியான எண்ணிக்கை இடவும்");
+      return;
+    }
+    confirmQtyAndAdd(v);
+  });
+
+  $("qtyPickerCancelBtn").addEventListener("click", ()=>{
+    $("qtyPickerOverlay").classList.remove("show");
+    qtyPickerCurrentItem = null;
+    qtyPickerQueue = [];
+  });
+
   function handleMainTranscript(transcript){
     setStatus('கேட்டது: "' + transcript + '"');
     const found = parseMultipleItems(transcript);
@@ -1259,16 +1336,16 @@
       speak("பட்டியலில் இல்லை");
       return;
     }
-    const spokenParts = [];
-    const statusParts = [];
-    for(const {item, qty} of found){
-      addToBill(item.id, qty);
-      const amt = (item.price*qty).toFixed(0);
-      spokenParts.push(item.name + " " + formatQty(qty));
-      statusParts.push(item.name + " × " + formatQty(qty) + " (₹" + amt + ")");
+    // Listed items matched — ask for quantity via the picker instead of
+    // trusting the spoken number, since decimal recognition wasn't always
+    // reliable. Pause continuous listening while the picker is open.
+    if(keepListening){
+      stopMainListening();
+      setStatus("எண்ணிக்கை தேர்வு செய்யவும் — மைக் நிறுத்தப்பட்டது");
     }
-    setStatus(statusParts.join(", ") + " சேர்க்கப்பட்டது");
-    speak(spokenParts.join(", ") + " சேர்க்கப்பட்டது");
+    const itemsToConfirm = found.map(f => f.item);
+    qtyPickerQueue = itemsToConfirm.slice(1);
+    openQtyPickerFor(itemsToConfirm[0]);
   }
 
   $("micBtn").addEventListener("click", () => {
@@ -1747,8 +1824,18 @@
     renderExistingItems();
     $("syncCodeInput").value = syncCode;
     $("deviceNameInput").value = deviceName;
+    $("syncSection").style.display = "none";
+    $("toggleSyncSection").textContent = "🌐 Cloud Settings (பல Device ரிப்போர்ட்) — காட்ட தட்டவும்";
     $("settingsOverlay").classList.add("show");
     prefetchFirebase();
+  });
+  $("toggleSyncSection").addEventListener("click", () => {
+    const sec = $("syncSection");
+    const hidden = sec.style.display === "none";
+    sec.style.display = hidden ? "block" : "none";
+    $("toggleSyncSection").textContent = hidden
+      ? "🌐 Cloud Settings (பல Device ரிப்போர்ட்) — மறைக்க தட்டவும்"
+      : "🌐 Cloud Settings (பல Device ரிப்போர்ட்) — காட்ட தட்டவும்";
   });
   $("closeSettings").addEventListener("click", async () => {
     shopName = $("shopNameInput").value.trim() || "என் கடை";
@@ -2098,18 +2185,7 @@
       try{ localStorage.setItem("kadai:firstrun", firstRun); }catch(e){}
     }
     const daysUsed = (Date.now() - parseInt(firstRun,10)) / DAY_MS;
-    if(daysUsed < TRIAL_DAYS){
-      const daysLeft = Math.max(1, Math.ceil(TRIAL_DAYS - daysUsed));
-      let banner = document.querySelector(".trial-banner");
-      if(!banner){
-        banner = document.createElement("div");
-        banner.className = "trial-banner";
-        document.body.insertBefore(banner, document.body.firstChild);
-      }
-      banner.textContent = "இலவச பயன்பாட்டு காலம்: இன்னும் " + daysLeft + " நாள்(கள்)";
-      return true;
-    }
-    return false;
+    return daysUsed < TRIAL_DAYS;
   }
 
   $("lockSubmitBtn").addEventListener("click", async () => {
@@ -2125,8 +2201,6 @@
       if(result.valid){
         try{ localStorage.setItem("kadai:activated", "1"); }catch(e){}
         $("lockOverlay").classList.remove("show");
-        const banner = document.querySelector(".trial-banner");
-        if(banner) banner.remove();
       } else if(result.reason === "used"){
         $("lockError").textContent = "இந்த Code ஏற்கனவே பயன்படுத்தப்பட்டுவிட்டது.";
       } else {
