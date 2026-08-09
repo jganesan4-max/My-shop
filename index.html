@@ -300,6 +300,13 @@
     background:var(--gold);color:var(--board);border:none;border-radius:10px;
     padding:9px 14px;font-weight:700;font-size:14px;font-family:'Baloo Thambi 2',sans-serif;
   }
+  .ledger-row{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:12px 4px;border-bottom:1px dashed rgba(245,241,227,0.15);
+  }
+  .ledger-row .info{font-size:15px;}
+  .ledger-row .info .meta{display:block;color:var(--chalk-dim);font-size:13px;margin-top:2px;}
+  .ledger-row .amt{color:var(--danger);font-weight:700;font-size:17px;}
 
   @media print{
     body *{visibility:hidden;}
@@ -449,12 +456,37 @@
     <div class="history-day-total" id="historyDayTotal"></div>
     <button class="save-btn" id="downloadCsvBtn" style="margin-top:14px;">⬇️ Excel-ஆக பதிவிறக்கம் (CSV)</button>
 
+    <button class="btn btn-history" id="openLedgerBtn" style="width:100%;margin-top:14px;">📒 கடன் கணக்கு (Ledger) பார்க்க</button>
+
     <div class="field-label" style="margin-top:20px;">☁️ எல்லா Device முழு ரிப்போர்ட் (பணியாளர்கள் உட்பட)</div>
     <button class="btn btn-history" id="cloudReportBtn" style="width:100%;">☁️ இன்றைய அனைத்து Device முழு ரிப்போர்ட் பார்க்க</button>
     <div class="divider-note" id="cloudReportStatus"></div>
     <div id="cloudReportList"></div>
     <div class="history-day-total" id="cloudReportTotal"></div>
     <div class="divider-note">💡 இது வேலை செய்ய, இந்த device-லும் பணியாளர் device-லும் ஒரே Sync Code Settings-ல் இருக்க வேண்டும், இருவரும் பில் முடிக்கும்போது கிளவுட்-க்கு தானாக அனுப்பப்படும்.</div>
+  </div>
+</div>
+
+<!-- Credit Ledger sheet: running balance per customer, across all days -->
+<div class="overlay" id="ledgerOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">📒 கடன் கணக்கு (Ledger) <button class="icon-btn" id="closeLedger">✕</button></div>
+    <div id="ledgerList"></div>
+    <div class="history-day-total" id="ledgerTotalDue"></div>
+    <div class="divider-note">💡 வாடிக்கையாளர் பணம் கொடுக்கும்போது "பணம் பெற்றது" தட்டி பதிவு செய்யவும் — நிலுவை தொகை தானாக குறையும்.</div>
+  </div>
+</div>
+
+<!-- Ledger payment entry sheet -->
+<div class="overlay" id="ledgerPayOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title" id="ledgerPayTitle">பணம் பெற்றது</div>
+    <div class="field-label">பெறப்பட்ட தொகை (₹)</div>
+    <input type="number" id="ledgerPayAmount" inputmode="decimal">
+    <button class="save-btn" id="ledgerPayConfirmBtn">சேர்</button>
+    <button class="btn btn-history" id="ledgerPayCancelBtn" style="width:100%;margin-top:10px;">✕ ரத்து செய்</button>
   </div>
 </div>
 
@@ -626,6 +658,7 @@
   const STORAGE_KEY_SHOPNAME = "kadai:shopname";
   const STORAGE_KEY_STANDBY = "kadai:standby";
   const STORAGE_KEY_CURRENTBILL = "kadai:currentbill";
+  const STORAGE_KEY_LEDGER = "kadai:ledger";
   const todayKey = () => "kadai:sales:" + new Date().toISOString().slice(0,10);
   const todayDateOnly = () => new Date().toISOString().slice(0,10);
 
@@ -709,6 +742,7 @@
   let items = [];
   let bill = [];
   let standbyBills = [];
+  let ledger = {}; // { customerName: [ {type:'credit'|'payment', amount, date, time, billNo} ] }
   let shopName = "என் கடை";
   let recognition = null;
   let listeningTarget = null;
@@ -735,6 +769,10 @@
       const raw4 = localStorage.getItem(STORAGE_KEY_CURRENTBILL);
       bill = raw4 ? JSON.parse(raw4) : [];
     }catch(e){ bill = []; }
+    try{
+      const raw5 = localStorage.getItem(STORAGE_KEY_LEDGER);
+      ledger = raw5 ? JSON.parse(raw5) : {};
+    }catch(e){ ledger = {}; }
     $("shopNameDisplay").textContent = shopName;
     $("shopNameInput").value = shopName;
     renderItems();
@@ -750,6 +788,85 @@
   function saveCurrentBill(){
     try{ localStorage.setItem(STORAGE_KEY_CURRENTBILL, JSON.stringify(bill)); }catch(e){}
   }
+
+  // ---- Credit Ledger: a running per-customer balance, independent of the
+  // day-by-day sales history. A credit bill adds a "credit" entry; recording
+  // cash received from that customer adds a "payment" entry. Balance is
+  // always credit-total minus payment-total, computed fresh so it can never
+  // drift out of sync.
+  function saveLedger(){
+    try{ localStorage.setItem(STORAGE_KEY_LEDGER, JSON.stringify(ledger)); }catch(e){}
+  }
+  function addLedgerCredit(name, amount, billNo){
+    if(!name) return;
+    if(!ledger[name]) ledger[name] = [];
+    ledger[name].push({type:"credit", amount, date: todayDateOnly(), time: new Date().toLocaleTimeString("ta-IN",{hour:'2-digit',minute:'2-digit'}), billNo});
+    saveLedger();
+  }
+  function addLedgerPayment(name, amount){
+    if(!name) return;
+    if(!ledger[name]) ledger[name] = [];
+    ledger[name].push({type:"payment", amount, date: todayDateOnly(), time: new Date().toLocaleTimeString("ta-IN",{hour:'2-digit',minute:'2-digit'})});
+    saveLedger();
+  }
+  function ledgerBalance(name){
+    const entries = ledger[name] || [];
+    return entries.reduce((s,e)=> s + (e.type==="credit" ? e.amount : -e.amount), 0);
+  }
+
+  function renderLedger(){
+    const listEl = $("ledgerList");
+    const names = Object.keys(ledger).filter(n => ledgerBalance(n) > 0.001);
+    names.sort((a,b)=> ledgerBalance(b) - ledgerBalance(a));
+    if(names.length === 0){
+      listEl.innerHTML = '<div class="standby-empty">கடன் நிலுவை எதுவும் இல்லை 🎉</div>';
+      $("ledgerTotalDue").textContent = "";
+      return;
+    }
+    listEl.innerHTML = names.map(name => {
+      const bal = ledgerBalance(name);
+      return `<div class="ledger-row">
+        <div class="info">${escapeHtml(name)}<span class="meta">நிலுவை தொகை</span></div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="amt">₹${bal.toFixed(0)}</div>
+          <button class="resume-btn ledger-pay-btn" data-name="${escapeHtml(name)}">பணம் பெற்றது</button>
+        </div>
+      </div>`;
+    }).join("");
+    const totalDue = names.reduce((s,n)=> s + ledgerBalance(n), 0);
+    $("ledgerTotalDue").textContent = "மொத்த நிலுவை (" + names.length + " பேர்): ₹" + totalDue.toFixed(0);
+    listEl.querySelectorAll(".ledger-pay-btn").forEach(btn=>{
+      btn.addEventListener("click", ()=> openLedgerPay(btn.dataset.name));
+    });
+  }
+
+  let ledgerPayCurrentName = null;
+  function openLedgerPay(name){
+    ledgerPayCurrentName = name;
+    $("ledgerPayTitle").textContent = name + " — பணம் பெற்றது";
+    $("ledgerPayAmount").value = ledgerBalance(name).toFixed(0);
+    $("ledgerPayOverlay").classList.add("show");
+  }
+  $("ledgerPayConfirmBtn").addEventListener("click", ()=>{
+    const amt = parseFloat($("ledgerPayAmount").value);
+    if(isNaN(amt) || amt <= 0){ alert("சரியான தொகை இடவும்"); return; }
+    addLedgerPayment(ledgerPayCurrentName, amt);
+    $("ledgerPayOverlay").classList.remove("show");
+    setStatus(ledgerPayCurrentName + " கணக்கில் ₹" + amt.toFixed(0) + " பணம் பெறப்பட்டது");
+    speak(ledgerPayCurrentName + " கணக்கில் ரூபாய் " + amt.toFixed(0) + " பெறப்பட்டது");
+    renderLedger();
+  });
+  $("ledgerPayCancelBtn").addEventListener("click", ()=>{
+    $("ledgerPayOverlay").classList.remove("show");
+  });
+  $("openLedgerBtn").addEventListener("click", ()=>{
+    renderLedger();
+    $("ledgerOverlay").classList.add("show");
+  });
+  $("closeLedger").addEventListener("click", ()=>{
+    $("ledgerOverlay").classList.remove("show");
+  });
+
   async function saveStandby(){
     try{ localStorage.setItem(STORAGE_KEY_STANDBY, JSON.stringify(standbyBills)); }catch(e){}
   }
@@ -1688,18 +1805,26 @@
     dayList.push({ billNo, time, total, method, received, balance, customerName: customerName || null, items: itemsSnapshot });
     try{ localStorage.setItem(key, JSON.stringify(dayList)); }catch(e){}
 
+    // Credit bill: add to that customer's running ledger balance.
+    if(method === "credit" && customerName){
+      addLedgerCredit(customerName, total, billNo);
+    }
+
     // Fire-and-forget: never awaited, so a slow/offline connection can
     // never delay the receipt screen or the spoken confirmation below.
     pushBillToCloud(todayDateOnly(), dayList[dayList.length-1]);
 
     // Spoken confirmation: a short finishing word, plus — when paying
-    // by cash — the balance amount to give back / still collect, so
+    // by cash — the balance amount to give back / still collect, or —
+    // when on credit — which customer's account it was added to, so
     // the shopkeeper hears it without having to look at the screen.
     let speechText = "பில் முடிந்தது.";
     if(method === "cash" && balance > 0){
       speechText += " திரும்ப கொடுக்க வேண்டியது ரூபாய் " + balance.toFixed(0) + ".";
     } else if(method === "cash" && balance < 0){
       speechText += " இன்னும் தேவை ரூபாய் " + Math.abs(balance).toFixed(0) + ".";
+    } else if(method === "credit"){
+      speechText += " இந்த பில் " + customerName + " கடன் கணக்கில் சேர்க்கப்பட்டது.";
     }
     speak(speechText);
     if(method === "cash" && balance > 0){
