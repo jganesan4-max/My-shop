@@ -473,7 +473,24 @@
     <div class="sheet-title">📒 கடன் கணக்கு (Ledger) <button class="icon-btn" id="closeLedger">✕</button></div>
     <div id="ledgerList"></div>
     <div class="history-day-total" id="ledgerTotalDue"></div>
-    <div class="divider-note">💡 வாடிக்கையாளர் பணம் கொடுக்கும்போது "பணம் பெற்றது" தட்டி பதிவு செய்யவும் — நிலுவை தொகை தானாக குறையும்.</div>
+    <div class="divider-note">💡 வாடிக்கையாளர் பணம் கொடுக்கும்போது "பணம் பெற்றது" தட்டி பதிவு செய்யவும் — நிலுவை தொகை தானாக குறையும். பெயரை தட்டினால் முழு விவரமும் தெரியும்.</div>
+  </div>
+</div>
+
+<!-- Ledger customer detail sheet: full purchase/payment history for one
+     customer, with date, CSV download, and both print options. -->
+<div class="overlay" id="ledgerDetailOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title" id="ledgerDetailTitle">வாடிக்கையாளர் <button class="icon-btn" id="closeLedgerDetail">✕</button></div>
+    <div class="history-day-total" id="ledgerDetailBalance" style="text-align:center;margin-bottom:6px;"></div>
+    <div id="ledgerDetailList"></div>
+
+    <button class="save-btn" id="ledgerDetailDirectPrintBtn" style="margin-top:16px;background:var(--gold);color:var(--board);">🔵 நேரடி பிரிண்ட் (Bluetooth)</button>
+    <div style="display:flex;gap:10px;margin-top:10px;">
+      <button class="btn btn-history" id="ledgerDetailPrintBtn" style="flex:1;">🖨️ PDF பிரிண்ட்</button>
+      <button class="btn btn-history" id="ledgerDetailCsvBtn" style="flex:1;">⬇️ CSV</button>
+    </div>
   </div>
 </div>
 
@@ -829,7 +846,7 @@
     listEl.innerHTML = names.map(name => {
       const bal = ledgerBalance(name);
       return `<div class="ledger-row">
-        <div class="info">${escapeHtml(name)}<span class="meta">நிலுவை தொகை</span></div>
+        <div class="info ledger-name-link" data-name="${escapeHtml(name)}" style="cursor:pointer;text-decoration:underline;">${escapeHtml(name)}<span class="meta">நிலுவை தொகை — விவரம் காண தட்டவும்</span></div>
         <div style="display:flex;align-items:center;gap:10px;">
           <div class="amt">₹${bal.toFixed(0)}</div>
           <button class="resume-btn ledger-pay-btn" data-name="${escapeHtml(name)}">பணம் பெற்றது</button>
@@ -839,7 +856,10 @@
     const totalDue = names.reduce((s,n)=> s + ledgerBalance(n), 0);
     $("ledgerTotalDue").textContent = "மொத்த நிலுவை (" + names.length + " பேர்): ₹" + totalDue.toFixed(0);
     listEl.querySelectorAll(".ledger-pay-btn").forEach(btn=>{
-      btn.addEventListener("click", ()=> openLedgerPay(btn.dataset.name));
+      btn.addEventListener("click", (e)=>{ e.stopPropagation(); openLedgerPay(btn.dataset.name); });
+    });
+    listEl.querySelectorAll(".ledger-name-link").forEach(el=>{
+      el.addEventListener("click", ()=> openLedgerDetail(el.dataset.name));
     });
   }
 
@@ -887,6 +907,131 @@
   });
   $("closeLedger").addEventListener("click", ()=>{
     $("ledgerOverlay").classList.remove("show");
+  });
+
+  // ---- Ledger customer detail: full transaction history (credit bills +
+  // payments received) for one customer, with date, CSV export, and both
+  // print options (matching the receipt screen's print pattern).
+  let ledgerDetailCurrentName = null;
+
+  function getLedgerEntriesSorted(name){
+    const entries = (ledger[name] || []).slice();
+    // Newest first, using date+time as given (already localized strings,
+    // so sort by original push order reversed — entries are always pushed
+    // chronologically, so reversing the array is a safe cheap sort).
+    return entries.reverse();
+  }
+
+  function openLedgerDetail(name){
+    ledgerDetailCurrentName = name;
+    renderLedgerDetail(name);
+    $("ledgerOverlay").classList.remove("show");
+    $("ledgerDetailOverlay").classList.add("show");
+  }
+
+  function renderLedgerDetail(name){
+    $("ledgerDetailTitle").childNodes[0].textContent = name + " ";
+    const bal = ledgerBalance(name);
+    $("ledgerDetailBalance").innerHTML = 'தற்போதைய நிலுவை: <span style="color:' + (bal>0 ? "var(--danger)" : "var(--ok)") + ';font-weight:800;font-size:20px;">₹' + bal.toFixed(0) + '</span>';
+    const entries = getLedgerEntriesSorted(name);
+    const listEl = $("ledgerDetailList");
+    if(entries.length === 0){
+      listEl.innerHTML = '<div class="standby-empty">பரிவர்த்தனைகள் இல்லை</div>';
+      return;
+    }
+    listEl.innerHTML = entries.map(e => {
+      const isCredit = e.type === "credit";
+      const label = isCredit ? ("பில்" + (e.billNo ? " #"+e.billNo : "")) : "பணம் பெற்றது";
+      const color = isCredit ? "var(--gold)" : "var(--ok)";
+      const sign = isCredit ? "+" : "−";
+      return `<div class="history-row">
+        <span>${escapeHtml(e.date)} ${escapeHtml(e.time)}<span class="pay-tag">${label}</span></span>
+        <span style="color:${color};font-weight:700;">${sign}₹${e.amount.toFixed(0)}</span>
+      </div>`;
+    }).join("");
+  }
+
+  function buildLedgerDetailText(name){
+    const bal = ledgerBalance(name);
+    const entries = getLedgerEntriesSorted(name);
+    let lines = [];
+    lines.push(shopName + " — கடன் கணக்கு");
+    lines.push(name);
+    lines.push("-----------------------------");
+    entries.forEach(e => {
+      const label = e.type === "credit" ? ("பில்" + (e.billNo ? " #"+e.billNo : "")) : "பணம் பெற்றது";
+      const sign = e.type === "credit" ? "+" : "-";
+      lines.push(e.date + " " + e.time + "  " + label + "  " + sign + "₹" + e.amount.toFixed(0));
+    });
+    lines.push("-----------------------------");
+    lines.push("தற்போதைய நிலுவை: ₹" + bal.toFixed(0));
+    return lines.join("\n");
+  }
+
+  function printLedgerDetail(name){
+    const bal = ledgerBalance(name);
+    const entries = getLedgerEntriesSorted(name);
+    let html = `<h2>${escapeHtml(shopName)}</h2>`;
+    html += `<div style="text-align:center;font-size:12px;">கடன் கணக்கு — ${escapeHtml(name)}</div>`;
+    html += `<div class="pr-line"></div><table>`;
+    entries.forEach(e => {
+      const label = e.type === "credit" ? ("பில்" + (e.billNo ? " #"+e.billNo : "")) : "பணம் பெற்றது";
+      const sign = e.type === "credit" ? "+" : "-";
+      html += `<tr><td>${escapeHtml(e.date)} ${escapeHtml(e.time)} ${label}</td><td style="text-align:right;">${sign}₹${e.amount.toFixed(0)}</td></tr>`;
+    });
+    html += `</table><div class="pr-line"></div>`;
+    html += `<table><tr class="pr-total"><td>நிலுவை</td><td style="text-align:right;">₹${bal.toFixed(0)}</td></tr></table>`;
+    html += `<div class="pr-line"></div><div style="text-align:center;font-size:12px;">நன்றி! Thank you</div>`;
+    $("printArea").innerHTML = html;
+    window.print();
+  }
+
+  $("closeLedgerDetail").addEventListener("click", ()=>{
+    $("ledgerDetailOverlay").classList.remove("show");
+  });
+
+  // Same Bluetooth direct-print pattern as the receipt screen: shares plain
+  // text via Android's native Share sheet so an ESC/POS print app can pick
+  // it up directly on a 2-inch/3-inch thermal printer, no PDF needed.
+  $("ledgerDetailDirectPrintBtn").addEventListener("click", async () => {
+    if(!ledgerDetailCurrentName) return;
+    const text = buildLedgerDetailText(ledgerDetailCurrentName);
+    if(navigator.share){
+      try{ await navigator.share({ title: shopName + " - " + ledgerDetailCurrentName, text }); }
+      catch(e){ /* user cancelled share sheet — no action needed */ }
+    } else {
+      alert("இந்த பிரவுசர் நேரடி Share ஆதரிக்கவில்லை. கீழே 'PDF பிரிண்ட்' பயன்படுத்தவும்.");
+    }
+  });
+
+  $("ledgerDetailPrintBtn").addEventListener("click", () => {
+    if(!ledgerDetailCurrentName) return;
+    printLedgerDetail(ledgerDetailCurrentName);
+  });
+
+  $("ledgerDetailCsvBtn").addEventListener("click", () => {
+    if(!ledgerDetailCurrentName) return;
+    const name = ledgerDetailCurrentName;
+    const entries = getLedgerEntriesSorted(name);
+    if(entries.length === 0){ setStatus("பரிவர்த்தனைகள் இல்லை"); return; }
+    const header = ["Date","Time","Type","Bill No","Amount"];
+    const rows = entries.map(e => [
+      e.date, e.time,
+      e.type === "credit" ? "Credit Bill" : "Payment Received",
+      e.billNo || "",
+      (e.type === "credit" ? e.amount : -e.amount).toFixed(0)
+    ]);
+    rows.push(["","","","Balance", ledgerBalance(name).toFixed(0)]);
+    const csv = [header, ...rows].map(r => r.map(csvEscape).join(",")).join("\n");
+    const blob = new Blob(["\uFEFF" + csv], {type:"text/csv;charset=utf-8;"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "ledger-" + name.replace(/[^a-zA-Z0-9அ-ஹா-ௌ]+/g,"_") + ".csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   });
 
   async function saveStandby(){
