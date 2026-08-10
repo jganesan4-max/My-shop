@@ -512,6 +512,7 @@
     <div class="qty-grid" id="qtyGrid"></div>
     <div class="field-row" style="margin-top:14px;">
       <input type="number" id="qtyCustomInput" inputmode="decimal" placeholder="வேறு எண்ணிக்கை">
+      <button class="mic-mini" id="qtyCustomMic">🎙️</button>
       <button class="mic-mini" id="qtyCustomAddBtn" style="flex:0 0 60px;font-size:14px;font-weight:700;">சேர்</button>
     </div>
     <button class="btn btn-history" id="qtyPickerCancelBtn" style="width:100%;margin-top:14px;">✕ ரத்து செய்</button>
@@ -1060,16 +1061,19 @@
     }
     grid.innerHTML = items.map(it => `
       <div class="item-card" data-id="${it.id}">
-        <span class="item-add-badge">+1</span>
+        <span class="item-add-badge">➕</span>
         <div class="item-name">${escapeHtml(it.name)}</div>
         <div class="item-price">₹${it.price}</div>
       </div>
     `).join("");
     grid.querySelectorAll(".item-card").forEach(card => {
       card.addEventListener("click", () => {
-        addToBill(card.dataset.id, 1);
+        const item = items.find(i => i.id === card.dataset.id);
+        if(!item) return;
         card.classList.add("bump");
         setTimeout(()=>card.classList.remove("bump"), 350);
+        qtyPickerQueue = [];
+        openQtyPickerFor(item);
       });
     });
   }
@@ -1554,6 +1558,17 @@
       const v = extractAmountFromTranscript(transcript);
       if(v !== null) $("qaQty").value = v;
       else setStatus('எண்ணிக்கை புரியவில்லை. மீண்டும் சொல்லுங்கள்.');
+    });
+  });
+
+  $("qtyCustomMic").addEventListener("click", () => {
+    startSingleShotMic("qtyCustom", $("qtyCustomMic"), (transcript) => {
+      const v = extractAmountFromTranscript(transcript);
+      if(v !== null){
+        $("qtyCustomInput").value = v;
+      } else {
+        setStatus('எண்ணிக்கை புரியவில்லை. மீண்டும் சொல்லுங்கள் அல்லது தட்டச்சு செய்யவும்.');
+      }
     });
   });
 
