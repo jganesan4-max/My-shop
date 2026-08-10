@@ -158,7 +158,7 @@
     background:var(--board);border-top:2px dashed rgba(245,241,227,0.25);
     padding:10px 16px calc(10px + env(safe-area-inset-bottom));
     max-width:520px;margin:0 auto;
-    display:flex;gap:10px;
+    display:flex;gap:8px;
   }
   .btn{
     flex:1;border:none;border-radius:14px;padding:16px 10px;
@@ -167,7 +167,7 @@
   }
   .btn-finish{background:var(--brick);color:var(--chalk);box-shadow:0 4px 0 var(--brick-dim);}
   .btn-finish:active{transform:translateY(3px);box-shadow:0 1px 0 var(--brick-dim);}
-  .btn-history{background:var(--board-light);color:var(--chalk);flex:0 0 56px;box-shadow:0 4px 0 rgba(0,0,0,0.3);border:1px solid rgba(245,241,227,0.15);}
+  .btn-history{background:var(--board-light);color:var(--chalk);flex:0 0 50px;box-shadow:0 4px 0 rgba(0,0,0,0.3);border:1px solid rgba(245,241,227,0.15);}
   .btn-history:active{transform:translateY(3px);}
   .btn-standby{position:relative;}
   .standby-badge{
@@ -395,6 +395,7 @@
   <div class="bottom-bar">
     <button class="btn btn-history btn-standby" id="standbyBtn" title="Standby">⏸️<span class="standby-badge" id="standbyBadge" style="display:none;">0</span></button>
     <button class="btn btn-history" id="historyBtn">📒</button>
+    <button class="btn btn-history btn-standby" id="ledgerMainBtn" title="கடன் கணக்கு">💰<span class="standby-badge" id="ledgerBadge" style="display:none;">0</span></button>
     <button class="btn btn-finish" id="finishBtn">✅ பில் முடி</button>
   </div>
 </div>
@@ -456,8 +457,6 @@
     <div class="history-day-total" id="historyDayTotal"></div>
     <button class="save-btn" id="downloadCsvBtn" style="margin-top:14px;">⬇️ Excel-ஆக பதிவிறக்கம் (CSV)</button>
 
-    <button class="btn btn-history" id="openLedgerBtn" style="width:100%;margin-top:14px;">📒 கடன் கணக்கு (Ledger) பார்க்க</button>
-
     <div class="field-label" style="margin-top:20px;">☁️ எல்லா Device முழு ரிப்போர்ட் (பணியாளர்கள் உட்பட)</div>
     <button class="btn btn-history" id="cloudReportBtn" style="width:100%;">☁️ இன்றைய அனைத்து Device முழு ரிப்போர்ட் பார்க்க</button>
     <div class="divider-note" id="cloudReportStatus"></div>
@@ -483,8 +482,10 @@
   <div class="sheet">
     <div class="sheet-handle"></div>
     <div class="sheet-title" id="ledgerPayTitle">பணம் பெற்றது</div>
+    <div class="divider-note" style="margin-top:0;" id="ledgerPayCurrentBalance"></div>
     <div class="field-label">பெறப்பட்ட தொகை (₹)</div>
     <input type="number" id="ledgerPayAmount" inputmode="decimal">
+    <div class="divider-note" id="ledgerPayRemainingPreview"></div>
     <button class="save-btn" id="ledgerPayConfirmBtn">சேர்</button>
     <button class="btn btn-history" id="ledgerPayCancelBtn" style="width:100%;margin-top:10px;">✕ ரத்து செய்</button>
   </div>
@@ -777,6 +778,7 @@
     $("shopNameInput").value = shopName;
     renderItems();
     updateStandbyBadge();
+    updateLedgerBadge();
   }
 
   async function saveItems(){
@@ -844,9 +846,27 @@
   function openLedgerPay(name){
     ledgerPayCurrentName = name;
     $("ledgerPayTitle").textContent = name + " — பணம் பெற்றது";
+    $("ledgerPayCurrentBalance").textContent = "💡 தற்போதைய நிலுவை: ₹" + ledgerBalance(name).toFixed(0) + ". முழுவதும் பெற்றால் அப்படியே தட்டவும்; பாதி/குறைவாக பெற்றால் தொகையை மாற்றி தட்டச்சு செய்யவும்.";
     $("ledgerPayAmount").value = ledgerBalance(name).toFixed(0);
+    updateLedgerPayPreview();
     $("ledgerPayOverlay").classList.add("show");
   }
+  function updateLedgerPayPreview(){
+    const bal = ledgerBalance(ledgerPayCurrentName);
+    const amt = parseFloat($("ledgerPayAmount").value);
+    const preview = $("ledgerPayRemainingPreview");
+    if(isNaN(amt) || amt <= 0){
+      preview.textContent = "";
+      return;
+    }
+    const remaining = bal - amt;
+    if(remaining <= 0.001){
+      preview.textContent = "✅ இந்த பணம் பெற்றபின் கணக்கு முழுவதும் தீர்ந்துவிடும்.";
+    } else {
+      preview.textContent = "இந்த பணம் பெற்றபின் மீதம் இருக்கும் நிலுவை: ₹" + remaining.toFixed(0);
+    }
+  }
+  $("ledgerPayAmount").addEventListener("input", updateLedgerPayPreview);
   $("ledgerPayConfirmBtn").addEventListener("click", ()=>{
     const amt = parseFloat($("ledgerPayAmount").value);
     if(isNaN(amt) || amt <= 0){ alert("சரியான தொகை இடவும்"); return; }
@@ -855,11 +875,12 @@
     setStatus(ledgerPayCurrentName + " கணக்கில் ₹" + amt.toFixed(0) + " பணம் பெறப்பட்டது");
     speak(ledgerPayCurrentName + " கணக்கில் ரூபாய் " + amt.toFixed(0) + " பெறப்பட்டது");
     renderLedger();
+    updateLedgerBadge();
   });
   $("ledgerPayCancelBtn").addEventListener("click", ()=>{
     $("ledgerPayOverlay").classList.remove("show");
   });
-  $("openLedgerBtn").addEventListener("click", ()=>{
+  $("ledgerMainBtn").addEventListener("click", ()=>{
     renderLedger();
     $("ledgerOverlay").classList.add("show");
   });
@@ -1808,6 +1829,7 @@
     // Credit bill: add to that customer's running ledger balance.
     if(method === "credit" && customerName){
       addLedgerCredit(customerName, total, billNo);
+      updateLedgerBadge();
     }
 
     // Fire-and-forget: never awaited, so a slow/offline connection can
@@ -2043,6 +2065,7 @@
       renderBill();
       renderExistingItems();
       updateStandbyBadge();
+      updateLedgerBadge();
       $("settingsOverlay").classList.remove("show");
       alert("Backup மீட்டெடுக்கப்பட்டது ✅");
     };
@@ -2286,6 +2309,17 @@
     if(standbyBills.length > 0){
       badge.style.display = "flex";
       badge.textContent = standbyBills.length;
+    } else {
+      badge.style.display = "none";
+    }
+  }
+
+  function updateLedgerBadge(){
+    const badge = $("ledgerBadge");
+    const count = Object.keys(ledger).filter(n => ledgerBalance(n) > 0.001).length;
+    if(count > 0){
+      badge.style.display = "flex";
+      badge.textContent = count;
     } else {
       badge.style.display = "none";
     }
