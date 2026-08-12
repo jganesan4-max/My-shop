@@ -325,6 +325,13 @@
   .ledger-row .info{font-size:15px;}
   .ledger-row .info .meta{display:block;color:var(--chalk-dim);font-size:13px;margin-top:2px;}
   .ledger-row .amt{color:var(--danger);font-weight:700;font-size:17px;}
+  .customer-search-row{
+    padding:12px 12px;border-bottom:1px solid rgba(245,241,227,0.1);
+    display:flex;justify-content:space-between;align-items:center;
+    border-radius:8px;
+  }
+  .customer-search-row:active{background:var(--board-lighter);}
+  .customer-search-row.selected{background:var(--board-lighter);border-left:3px solid var(--gold);}
 
   @media print{
     body *{visibility:hidden;}
@@ -645,8 +652,26 @@
     </div>
 
     <div class="bank-panel" id="creditPanel">
-      <div class="field-label" style="margin-top:0;color:var(--chalk);text-align:left;">வாடிக்கையாளர் பெயர்</div>
-      <input type="text" id="creditCustomerName" placeholder="எ.கா. முருகன்">
+      <div class="pay-method-row" style="margin:0 0 12px;">
+        <button class="pay-method-btn active" id="creditNewCustomerBtn" style="padding:10px 6px;">
+          <span class="emoji" style="font-size:18px;">🆕</span>புதிய வாடிக்கையாளர்
+        </button>
+        <button class="pay-method-btn" id="creditExistingCustomerBtn" style="padding:10px 6px;">
+          <span class="emoji" style="font-size:18px;">👤</span>இருக்கும் வாடிக்கையாளர்
+        </button>
+      </div>
+
+      <div id="creditNewCustomerSection">
+        <div class="field-label" style="margin-top:0;color:var(--chalk);text-align:left;">வாடிக்கையாளர் பெயர்</div>
+        <input type="text" id="creditCustomerName" placeholder="எ.கா. முருகன்">
+      </div>
+
+      <div id="creditExistingCustomerSection" style="display:none;">
+        <div class="field-label" style="margin-top:0;color:var(--chalk);text-align:left;">வாடிக்கையாளரை தேடவும்</div>
+        <input type="text" id="creditCustomerSearch" placeholder="பெயரை தட்டச்சு செய்யவும்...">
+        <div id="creditCustomerSearchResults" style="max-height:200px;overflow-y:auto;margin-top:8px;"></div>
+      </div>
+
       <div class="divider-note">💡 இந்த தொகை பணமாக இன்னும் பெறப்படவில்லை — பெயருடன் பதிவு செய்யப்படும்.</div>
     </div>
 
@@ -1925,13 +1950,74 @@
     $("creditPanel").classList.add("show");
     $("cashPanel").classList.remove("show");
     $("bankPanel").classList.remove("show");
-    $("confirmPayBtn").disabled = $("creditCustomerName").value.trim() === "";
+    // Default to "New customer" each time the credit panel opens.
+    $("creditNewCustomerBtn").classList.add("active");
+    $("creditExistingCustomerBtn").classList.remove("active");
+    $("creditNewCustomerSection").style.display = "block";
+    $("creditExistingCustomerSection").style.display = "none";
+    updateCreditConfirmState();
   });
 
-  $("creditCustomerName").addEventListener("input", () => {
+  function updateCreditConfirmState(){
     if(payMethod === "credit"){
       $("confirmPayBtn").disabled = $("creditCustomerName").value.trim() === "";
     }
+  }
+
+  $("creditCustomerName").addEventListener("input", updateCreditConfirmState);
+
+  $("creditNewCustomerBtn").addEventListener("click", () => {
+    $("creditNewCustomerBtn").classList.add("active");
+    $("creditExistingCustomerBtn").classList.remove("active");
+    $("creditNewCustomerSection").style.display = "block";
+    $("creditExistingCustomerSection").style.display = "none";
+    $("creditCustomerName").value = "";
+    updateCreditConfirmState();
+  });
+
+  $("creditExistingCustomerBtn").addEventListener("click", () => {
+    $("creditExistingCustomerBtn").classList.add("active");
+    $("creditNewCustomerBtn").classList.remove("active");
+    $("creditExistingCustomerSection").style.display = "block";
+    $("creditNewCustomerSection").style.display = "none";
+    $("creditCustomerName").value = "";
+    $("creditCustomerSearch").value = "";
+    renderCustomerSearchResults("");
+    updateCreditConfirmState();
+  });
+
+  // Lists every customer name already known from the ledger (both currently
+  // owing and fully settled), filtered live as the shopkeeper types — avoids
+  // the same customer being logged under slightly different spellings.
+  function renderCustomerSearchResults(filterText){
+    const container = $("creditCustomerSearchResults");
+    const allNames = Object.keys(ledger).sort((a,b)=> a.localeCompare(b, "ta"));
+    const q = (filterText || "").trim().toLowerCase();
+    const filtered = q ? allNames.filter(n => n.toLowerCase().indexOf(q) !== -1) : allNames;
+    if(filtered.length === 0){
+      container.innerHTML = '<div class="divider-note" style="margin-top:8px;">வாடிக்கையாளர்கள் இல்லை. மேலே "🆕 புதிய வாடிக்கையாளர்" தட்டி பெயர் இடவும்.</div>';
+      return;
+    }
+    const selectedName = $("creditCustomerName").value;
+    container.innerHTML = filtered.map(name => {
+      const bal = ledgerBalance(name);
+      const isSelected = name === selectedName;
+      return `<div class="customer-search-row${isSelected ? ' selected' : ''}" data-name="${escapeHtml(name)}">
+        <span>${escapeHtml(name)}</span>
+        <span style="color:${bal>0?'var(--danger)':'var(--chalk-dim)'};font-size:13px;">${bal>0.001 ? "நிலுவை ₹"+bal.toFixed(0) : "நிலுவை இல்லை"}</span>
+      </div>`;
+    }).join("");
+    container.querySelectorAll(".customer-search-row").forEach(row => {
+      row.addEventListener("click", () => {
+        $("creditCustomerName").value = row.dataset.name;
+        renderCustomerSearchResults($("creditCustomerSearch").value);
+        updateCreditConfirmState();
+      });
+    });
+  }
+
+  $("creditCustomerSearch").addEventListener("input", () => {
+    renderCustomerSearchResults($("creditCustomerSearch").value);
   });
 
   $("cashReceived").addEventListener("input", updateBalanceDisplay);
