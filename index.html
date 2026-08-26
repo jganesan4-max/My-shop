@@ -705,7 +705,7 @@
 <div class="overlay lock-overlay" id="lockOverlay">
   <div class="lock-box">
     <img class="lock-logo" id="lockLogoImg" src="" alt="logo">
-    <h2>இலவச பயன்பாட்டு காலம் முடிந்தது</h2>
+    <h2 id="lockTitle">இலவச பயன்பாட்டு காலம் முடிந்தது</h2>
     <p>இந்த ஆப்பை தொடர்ந்து பயன்படுத்த, விற்பனையாளரிடம் இருந்து பெற்ற Activation Code-ஐ கீழே பதிவு செய்யவும்.</p>
     <div class="lock-error" id="lockError"></div>
     <input type="text" id="lockCodeInput" inputmode="numeric" placeholder="எ.கா. 1234-5678" maxlength="9">
@@ -2699,8 +2699,17 @@
     return await res.json();
   }
 
+  // Access check, in order:
+  // 1. Legacy permanent unlock (from before paid activations had an expiry)
+  //    — honored forever so no existing paying customer is ever locked out
+  //    by this change.
+  // 2. A paid activation with an expiry date — valid until that date, then
+  //    the lock screen returns asking for a renewal code.
+  // 3. The free trial window for brand-new installs.
   function checkAccess(){
     if(localStorage.getItem("kadai:activated") === "1") return true;
+    const activatedUntil = localStorage.getItem("kadai:activated_until");
+    if(activatedUntil && Date.now() < parseInt(activatedUntil,10)) return true;
     let firstRun = localStorage.getItem("kadai:firstrun");
     if(!firstRun){
       firstRun = Date.now().toString();
@@ -2708,6 +2717,18 @@
     }
     const daysUsed = (Date.now() - parseInt(firstRun,10)) / DAY_MS;
     return daysUsed < TRIAL_DAYS;
+  }
+
+  // Shows the right headline depending on whether this is a brand-new
+  // trial ending for the first time, or a paid subscription that has
+  // expired and now needs renewal.
+  function setLockScreenText(){
+    const everActivated = localStorage.getItem("kadai:activated_until") !== null;
+    if(everActivated){
+      $("lockTitle").textContent = "சந்தா காலம் முடிந்தது";
+    } else {
+      $("lockTitle").textContent = "இலவச பயன்பாட்டு காலம் முடிந்தது";
+    }
   }
 
   $("lockSubmitBtn").addEventListener("click", async () => {
@@ -2721,7 +2742,9 @@
     try{
       const result = await checkCodeOnline(code, "activate");
       if(result.valid){
-        try{ localStorage.setItem("kadai:activated", "1"); }catch(e){}
+        const days = result.days || 365;
+        const until = Date.now() + days*DAY_MS;
+        try{ localStorage.setItem("kadai:activated_until", until.toString()); }catch(e){}
         $("lockOverlay").classList.remove("show");
       } else if(result.reason === "used"){
         $("lockError").textContent = "இந்த Code ஏற்கனவே பயன்படுத்தப்பட்டுவிட்டது.";
@@ -2740,6 +2763,7 @@
   $("lockLogoImg").onerror = function(){ this.style.display = "none"; };
 
   if(!checkAccess()){
+    setLockScreenText();
     $("lockOverlay").classList.add("show");
   } else {
     try{
