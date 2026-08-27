@@ -627,6 +627,7 @@
       <div class="pay-total-label">பில் தொகை</div>
       <div class="pay-total-amount">₹<span id="payTotalAmt">0</span></div>
     </div>
+    <div class="divider-note" id="editDiffNote" style="display:none;text-align:center;margin-top:0;"></div>
 
     <div class="pay-method-row">
       <button class="pay-method-btn" id="payCashBtn"><span class="emoji">💵</span>பணம் (Cash)</button>
@@ -635,12 +636,14 @@
     </div>
 
     <div class="cash-panel" id="cashPanel">
-      <div class="field-label">பெறப்பட்ட தொகை (₹)</div>
-      <div class="field-row">
-        <input type="number" id="cashReceived" inputmode="decimal" placeholder="எ.கா. 200">
-        <button class="mic-mini" id="payMic">🎙️</button>
+      <div id="cashCollectRow">
+        <div class="field-label" id="cashReceivedLabel">பெறப்பட்ட தொகை (₹)</div>
+        <div class="field-row">
+          <input type="number" id="cashReceived" inputmode="decimal" placeholder="எ.கா. 200">
+          <button class="mic-mini" id="payMic">🎙️</button>
+        </div>
+        <div class="denom-row" id="denomRow"></div>
       </div>
-      <div class="denom-row" id="denomRow"></div>
       <div class="balance-panel" id="balancePanel" style="display:none;">
         <div class="balance-label" id="balanceLabel">திரும்ப கொடுக்க வேண்டியது</div>
         <div class="balance-amount give" id="balanceAmount">₹0</div>
@@ -1797,6 +1800,10 @@
   // receipt screen's "🔁 மீண்டும்" button and for Standby bills, since
   // those are meant to start a genuinely new sale, not edit an old one.
   let editingBillRef = null;
+  // The original (pre-edit) stored bill, looked up when the payment sheet
+  // opens for an edit — used to compute the difference to collect/refund
+  // instead of asking for the full amount all over again.
+  let editOriginalBill = null;
 
   $("finishBtn").addEventListener("click", () => {
     if(bill.length === 0){
@@ -1883,6 +1890,16 @@
   function openPaymentSheet(){
     const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
     payMethod = null;
+
+    // If this bill is being edited (loaded via History 🔁), look up what
+    // was already collected on the original bill so we only need to
+    // settle the DIFFERENCE, instead of asking for the full amount again.
+    editOriginalBill = null;
+    if(editingBillRef){
+      const todayList = getTodayList();
+      editOriginalBill = todayList.find(d => d.billNo === editingBillRef.billNo) || null;
+    }
+
     $("payTotalAmt").textContent = total.toFixed(0);
     $("payCashBtn").classList.remove("active");
     $("payBankBtn").classList.remove("active");
@@ -1895,8 +1912,26 @@
     $("balancePanel").style.display = "none";
     $("confirmPayBtn").disabled = true;
 
+    const editDiffNote = $("editDiffNote");
+    let diff = 0;
+    if(editOriginalBill){
+      diff = total - editOriginalBill.total;
+      editDiffNote.style.display = "block";
+      if(diff > 0){
+        editDiffNote.textContent = "✏️ பில் திருத்தப்படுகிறது — முந்தைய தொகை ₹" + editOriginalBill.total.toFixed(0) + ". கூடுதலாக ரூபாய் " + diff.toFixed(0) + " வாடிக்கையாளரிடம் பெற வேண்டும்.";
+      } else if(diff < 0){
+        editDiffNote.textContent = "✏️ பில் திருத்தப்படுகிறது — முந்தைய தொகை ₹" + editOriginalBill.total.toFixed(0) + ". வாடிக்கையாளருக்கு ரூபாய் " + Math.abs(diff).toFixed(0) + " திரும்ப கொடுக்க வேண்டும்.";
+      } else {
+        editDiffNote.textContent = "✏️ பில் திருத்தப்படுகிறது — தொகையில் மாற்றம் இல்லை.";
+      }
+    } else {
+      editDiffNote.style.display = "none";
+      editDiffNote.textContent = "";
+    }
+
+    const denomBase = editOriginalBill ? Math.max(diff, 0) : total;
     const denomRow = $("denomRow");
-    const denoms = [...new Set([50,100,200,500,2000, Math.ceil(total/10)*10])].filter(d=>d>0).sort((a,b)=>a-b);
+    const denoms = [...new Set([50,100,200,500,2000, Math.ceil(Math.max(denomBase,10)/10)*10])].filter(d=>d>0).sort((a,b)=>a-b);
     denomRow.innerHTML = denoms.map(d => `<button class="denom-btn" data-amt="${d}">₹${d}</button>`).join("");
     denomRow.querySelectorAll(".denom-btn").forEach(btn=>{
       btn.addEventListener("click", () => {
@@ -1906,7 +1941,40 @@
     });
 
     $("paymentOverlay").classList.add("show");
-    speak("பில் தொகை ரூபாய் " + total.toFixed(0) + ". எவ்வளவு பணம் பெற்றீர்கள்?");
+    if(editOriginalBill){
+      if(diff > 0){
+        speak("கூடுதலாக ரூபாய் " + diff.toFixed(0) + " பெற வேண்டும். எவ்வளவு பெற்றீர்கள்?");
+      } else if(diff < 0){
+        speak("வாடிக்கையாளருக்கு ரூபாய் " + Math.abs(diff).toFixed(0) + " திரும்ப கொடுக்க வேண்டும்.");
+      } else {
+        speak("தொகையில் மாற்றம் இல்லை.");
+      }
+    } else {
+      speak("பில் தொகை ரூபாய் " + total.toFixed(0) + ". எவ்வளவு பணம் பெற்றீர்கள்?");
+    }
+  }
+
+  // Shows/hides the cash-amount input depending on whether this is an
+  // edit that needs nothing further collected (a pure refund, or no
+  // change at all) versus one that still needs an extra amount from
+  // the customer.
+  function applyCashPanelEditMode(){
+    const collectRow = $("cashCollectRow");
+    const label = $("cashReceivedLabel");
+    if(editOriginalBill){
+      const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
+      const diff = total - editOriginalBill.total;
+      if(diff <= 0){
+        collectRow.style.display = "none";
+        $("cashReceived").value = "";
+      } else {
+        collectRow.style.display = "block";
+        if(label) label.textContent = "கூடுதலாக பெறப்பட்ட தொகை (₹)";
+      }
+    } else {
+      collectRow.style.display = "block";
+      if(label) label.textContent = "பெறப்பட்ட தொகை (₹)";
+    }
   }
 
   $("payMic").addEventListener("click", () => {
@@ -1928,8 +1996,27 @@
     $("payBankBtn").classList.remove("active");
     $("cashPanel").classList.add("show");
     $("bankPanel").classList.remove("show");
+    applyCashPanelEditMode();
     $("cashReceived").value = amt;
     updateBalanceDisplay();
+
+    if(editOriginalBill){
+      const diff = total - editOriginalBill.total;
+      if(diff <= 0){
+        setStatus("இந்த பில்லில் கூடுதலாக பணம் தேவையில்லை.");
+        return;
+      }
+      const extraDiff = amt - diff;
+      if(extraDiff >= 0){
+        speak("கூடுதலாக ரூபாய் " + diff.toFixed(0) + " தேவை. நீங்கள் " + amt.toFixed(0) + " பெற்றீர்கள். மீதம் " + extraDiff.toFixed(0) + " கொடுக்கவும்.");
+        setStatus("மீதம் ₹" + extraDiff.toFixed(0) + " கொடுக்கவும்");
+      } else {
+        speak("கூடுதலாக ரூபாய் " + diff.toFixed(0) + " தேவை. நீங்கள் " + amt.toFixed(0) + " பெற்றீர்கள். இன்னும் ரூபாய் " + Math.abs(extraDiff).toFixed(0) + " தேவை.");
+        setStatus("இன்னும் தேவை ₹" + Math.abs(extraDiff).toFixed(0));
+      }
+      return;
+    }
+
     const diff = amt - total;
     if(diff >= 0){
       speak("பில் தொகை " + total.toFixed(0) + ". நீங்கள் " + amt.toFixed(0) + " கொடுத்தீர்கள். மீதம் " + diff.toFixed(0) + " கொடுக்கவும்.");
@@ -1948,6 +2035,7 @@
     $("cashPanel").classList.add("show");
     $("bankPanel").classList.remove("show");
     $("creditPanel").classList.remove("show");
+    applyCashPanelEditMode();
     updateBalanceDisplay();
   });
 
@@ -2044,8 +2132,52 @@
 
   function updateBalanceDisplay(){
     const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
-    const received = parseFloat($("cashReceived").value);
     const panel = $("balancePanel");
+    const amtEl = $("balanceAmount");
+
+    if(editOriginalBill){
+      const diff = total - editOriginalBill.total;
+      if(diff <= 0){
+        // Nothing more to collect — either a straight refund (diff < 0)
+        // or no change at all (diff === 0). No cash input needed.
+        if(diff < 0){
+          panel.style.display = "block";
+          $("balanceLabel").textContent = "வாடிக்கையாளருக்கு திரும்ப கொடுக்க வேண்டியது";
+          amtEl.textContent = "₹" + Math.abs(diff).toFixed(0);
+          amtEl.classList.remove("short");
+          amtEl.classList.add("give");
+        } else {
+          panel.style.display = "none";
+        }
+        $("confirmPayBtn").disabled = false;
+        return;
+      }
+      // diff > 0: only the extra amount needs to be collected.
+      const extraReceived = parseFloat($("cashReceived").value);
+      if(isNaN(extraReceived) || extraReceived <= 0){
+        panel.style.display = "none";
+        $("confirmPayBtn").disabled = true;
+        return;
+      }
+      panel.style.display = "block";
+      const extraDiff = extraReceived - diff;
+      if(extraDiff >= 0){
+        $("balanceLabel").textContent = "திரும்ப கொடுக்க வேண்டியது";
+        amtEl.textContent = "₹" + extraDiff.toFixed(0);
+        amtEl.classList.remove("short");
+        amtEl.classList.add("give");
+      } else {
+        $("balanceLabel").textContent = "இன்னும் தேவை";
+        amtEl.textContent = "₹" + Math.abs(extraDiff).toFixed(0);
+        amtEl.classList.remove("give");
+        amtEl.classList.add("short");
+      }
+      $("confirmPayBtn").disabled = false;
+      return;
+    }
+
+    // Normal (non-edit) flow — unchanged.
+    const received = parseFloat($("cashReceived").value);
     if(isNaN(received) || received <= 0){
       panel.style.display = "none";
       $("confirmPayBtn").disabled = true;
@@ -2053,7 +2185,6 @@
     }
     panel.style.display = "block";
     const diff = received - total;
-    const amtEl = $("balanceAmount");
     if(diff >= 0){
       $("balanceLabel").textContent = "திரும்ப கொடுக்க வேண்டியது";
       amtEl.textContent = "₹" + diff.toFixed(0);
@@ -2073,8 +2204,16 @@
     const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
     let received = total, balance = 0, customerName = null;
     if(payMethod === "cash"){
-      received = parseFloat($("cashReceived").value) || 0;
-      balance = received - total;
+      if(editOriginalBill){
+        const diff = total - editOriginalBill.total;
+        const originalReceived = editOriginalBill.received || 0;
+        const extraReceived = diff > 0 ? (parseFloat($("cashReceived").value) || 0) : 0;
+        received = originalReceived + extraReceived;
+        balance = received - total;
+      } else {
+        received = parseFloat($("cashReceived").value) || 0;
+        balance = received - total;
+      }
     } else if(payMethod === "bank"){
       received = total; balance = 0;
     } else if(payMethod === "credit"){
@@ -2085,11 +2224,13 @@
       return;
     }
     const receipt = await finalizeBill(payMethod, total, received, balance, customerName);
+    editOriginalBill = null;
     $("paymentOverlay").classList.remove("show");
     openReceiptSheet(receipt);
   });
 
   $("closePayment").addEventListener("click", () => {
+    editOriginalBill = null;
     $("paymentOverlay").classList.remove("show");
   });
 
