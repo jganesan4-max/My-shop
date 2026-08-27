@@ -1921,13 +1921,18 @@
 
     const editDiffNote = $("editDiffNote");
     let diff = 0;
+    const isCreditEdit = !!(editOriginalBill && editOriginalBill.method === "credit");
     if(editOriginalBill){
       diff = total - editOriginalBill.total;
       editDiffNote.style.display = "block";
       if(diff > 0){
-        editDiffNote.textContent = "✏️ பில் திருத்தப்படுகிறது — முந்தைய தொகை ₹" + editOriginalBill.total.toFixed(0) + ". கூடுதலாக ரூபாய் " + diff.toFixed(0) + " வாடிக்கையாளரிடம் பெற வேண்டும்.";
+        editDiffNote.textContent = isCreditEdit
+          ? "✏️ பில் திருத்தப்படுகிறது — முந்தைய தொகை ₹" + editOriginalBill.total.toFixed(0) + ". கூடுதலாக ரூபாய் " + diff.toFixed(0) + " அவரது கடன் கணக்கில் சேர்க்கப்படும்."
+          : "✏️ பில் திருத்தப்படுகிறது — முந்தைய தொகை ₹" + editOriginalBill.total.toFixed(0) + ". கூடுதலாக ரூபாய் " + diff.toFixed(0) + " வாடிக்கையாளரிடம் பெற வேண்டும்.";
       } else if(diff < 0){
-        editDiffNote.textContent = "✏️ பில் திருத்தப்படுகிறது — முந்தைய தொகை ₹" + editOriginalBill.total.toFixed(0) + ". வாடிக்கையாளருக்கு ரூபாய் " + Math.abs(diff).toFixed(0) + " திரும்ப கொடுக்க வேண்டும்.";
+        editDiffNote.textContent = isCreditEdit
+          ? "✏️ பில் திருத்தப்படுகிறது — முந்தைய தொகை ₹" + editOriginalBill.total.toFixed(0) + ". அவரது கடன் கணக்கில் ரூபாய் " + Math.abs(diff).toFixed(0) + " குறைக்கப்படும்."
+          : "✏️ பில் திருத்தப்படுகிறது — முந்தைய தொகை ₹" + editOriginalBill.total.toFixed(0) + ". வாடிக்கையாளருக்கு ரூபாய் " + Math.abs(diff).toFixed(0) + " திரும்ப கொடுக்க வேண்டும்.";
       } else {
         editDiffNote.textContent = "✏️ பில் திருத்தப்படுகிறது — தொகையில் மாற்றம் இல்லை.";
       }
@@ -1970,9 +1975,13 @@
     $("paymentOverlay").classList.add("show");
     if(editOriginalBill){
       if(diff > 0){
-        speak("கூடுதலாக ரூபாய் " + diff.toFixed(0) + " பெற வேண்டும். எவ்வளவு பெற்றீர்கள்?");
+        speak(isCreditEdit
+          ? "கூடுதலாக ரூபாய் " + diff.toFixed(0) + " கடன் கணக்கில் சேர்க்கப்படும்."
+          : "கூடுதலாக ரூபாய் " + diff.toFixed(0) + " பெற வேண்டும். எவ்வளவு பெற்றீர்கள்?");
       } else if(diff < 0){
-        speak("வாடிக்கையாளருக்கு ரூபாய் " + Math.abs(diff).toFixed(0) + " திரும்ப கொடுக்க வேண்டும்.");
+        speak(isCreditEdit
+          ? "கடன் கணக்கில் ரூபாய் " + Math.abs(diff).toFixed(0) + " குறைக்கப்படும்."
+          : "வாடிக்கையாளருக்கு ரூபாய் " + Math.abs(diff).toFixed(0) + " திரும்ப கொடுக்க வேண்டும்.");
       } else {
         speak("தொகையில் மாற்றம் இல்லை.");
       }
@@ -2229,7 +2238,7 @@
 
   $("confirmPayBtn").addEventListener("click", async () => {
     const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
-    let received = total, balance = 0, customerName = null;
+    let received = total, balance = 0, customerName = null, speechBalance = null;
     if(payMethod === "cash"){
       if(editOriginalBill){
         const diff = total - editOriginalBill.total;
@@ -2237,9 +2246,16 @@
         const extraReceived = diff > 0 ? (parseFloat($("cashReceived").value) || 0) : 0;
         received = originalReceived + extraReceived;
         balance = received - total;
+        // Speak/show the same figure the shopkeeper already saw on
+        // screen while entering the amount — the extra collected minus
+        // what was owed for this edit — rather than recomputing it from
+        // the bill's whole history (which can differ by a few rupees if
+        // the original bill's own balance wasn't exactly zero).
+        speechBalance = diff > 0 ? (extraReceived - diff) : -diff;
       } else {
         received = parseFloat($("cashReceived").value) || 0;
         balance = received - total;
+        speechBalance = balance;
       }
     } else if(payMethod === "bank"){
       received = total; balance = 0;
@@ -2250,7 +2266,7 @@
     } else {
       return;
     }
-    const receipt = await finalizeBill(payMethod, total, received, balance, customerName);
+    const receipt = await finalizeBill(payMethod, total, received, balance, customerName, speechBalance);
     editOriginalBill = null;
     $("paymentOverlay").classList.remove("show");
     openReceiptSheet(receipt);
@@ -2263,7 +2279,8 @@
 
   let lastFinishedItems = null;
 
-  async function finalizeBill(method, total, received, balance, customerName){
+  async function finalizeBill(method, total, received, balance, customerName, speechBalance){
+    if(typeof speechBalance !== "number") speechBalance = balance;
     const itemTypes = bill.length;
     const totalQtyFinal = bill.reduce((s,b)=>s+b.qty,0);
     const key = todayKey();
@@ -2323,18 +2340,18 @@
     // when on credit — which customer's account it was added to, so
     // the shopkeeper hears it without having to look at the screen.
     let speechText = isEdit ? "பில் திருத்தப்பட்டு புதுப்பிக்கப்பட்டது." : "பில் முடிந்தது.";
-    if(method === "cash" && balance > 0){
-      speechText += " திரும்ப கொடுக்க வேண்டியது ரூபாய் " + balance.toFixed(0) + ".";
-    } else if(method === "cash" && balance < 0){
-      speechText += " இன்னும் தேவை ரூபாய் " + Math.abs(balance).toFixed(0) + ".";
+    if(method === "cash" && speechBalance > 0){
+      speechText += " திரும்ப கொடுக்க வேண்டியது ரூபாய் " + speechBalance.toFixed(0) + ".";
+    } else if(method === "cash" && speechBalance < 0){
+      speechText += " இன்னும் தேவை ரூபாய் " + Math.abs(speechBalance).toFixed(0) + ".";
     } else if(method === "credit"){
       speechText += " இந்த பில் " + customerName + " கடன் கணக்கில் சேர்க்கப்பட்டது.";
     }
     speak(speechText);
-    if(method === "cash" && balance > 0){
-      setStatus((isEdit ? "✏️ பில் #" + billNo + " புதுப்பிக்கப்பட்டது — " : "✅ ") + itemTypes + " பொருட்கள் — திரும்ப கொடுக்க வேண்டியது ₹" + balance.toFixed(0));
-    } else if(method === "cash" && balance < 0){
-      setStatus("⚠️ இன்னும் தேவை ₹" + Math.abs(balance).toFixed(0));
+    if(method === "cash" && speechBalance > 0){
+      setStatus((isEdit ? "✏️ பில் #" + billNo + " புதுப்பிக்கப்பட்டது — " : "✅ ") + itemTypes + " பொருட்கள் — திரும்ப கொடுக்க வேண்டியது ₹" + speechBalance.toFixed(0));
+    } else if(method === "cash" && speechBalance < 0){
+      setStatus("⚠️ இன்னும் தேவை ₹" + Math.abs(speechBalance).toFixed(0));
     } else if(method === "credit"){
       setStatus((isEdit ? "✏️ பில் #" + billNo + " புதுப்பிக்கப்பட்டது — " : "📒 ") + customerName + " கணக்கில் ₹" + total.toFixed(0) + " பதிவு செய்யப்பட்டது");
     } else {
