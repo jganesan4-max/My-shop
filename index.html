@@ -1947,6 +1947,26 @@
       });
     });
 
+    // When editing a bill, auto-select the same payment method it was
+    // originally finished with — this immediately reveals the refund /
+    // no-change confirmation (or the extra-amount field) instead of
+    // leaving the shopkeeper stuck on a disabled confirm button because
+    // they never tapped a method (easy to miss when nothing needs
+    // collecting, e.g. a pure refund).
+    if(editOriginalBill){
+      if(editOriginalBill.method === "bank"){
+        $("payBankBtn").click();
+      } else if(editOriginalBill.method === "credit"){
+        $("payCreditBtn").click();
+        if(editOriginalBill.customerName){
+          $("creditCustomerName").value = editOriginalBill.customerName;
+          updateCreditConfirmState();
+        }
+      } else {
+        $("payCashBtn").click();
+      }
+    }
+
     $("paymentOverlay").classList.add("show");
     if(editOriginalBill){
       if(diff > 0){
