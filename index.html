@@ -130,6 +130,8 @@
   .item-card:active{background:var(--board-lighter);}
   .item-name{font-size:18.5px;font-weight:600;color:var(--chalk);line-height:1.35;}
   .item-price{font-size:16.5px;color:var(--gold);font-weight:700;}
+  .item-stock-badge{font-size:12.5px;color:var(--chalk-dim);margin-top:1px;}
+  .item-stock-badge.low{color:var(--danger);font-weight:700;}
   .item-add-badge{
     position:absolute;top:8px;right:8px;
     background:var(--gold);color:var(--board);
@@ -1179,7 +1181,12 @@
     if(!syncCode) return;
     try{
       const db = await ensureFirebaseLoaded();
-      await db.ref("shops/" + sanitizeSyncCode(syncCode) + "/sales/" + dateOnly).push({
+      // A stable key (device + bill number) instead of push()'s random
+      // key — so re-pushing an EDITED bill overwrites its own cloud
+      // record instead of sitting alongside the old one as a duplicate.
+      const devicePart = sanitizeSyncCode(deviceName || "device");
+      const recordKey = devicePart + "_" + billRecord.billNo;
+      await db.ref("shops/" + sanitizeSyncCode(syncCode) + "/sales/" + dateOnly + "/" + recordKey).set({
         ...billRecord,
         deviceName: deviceName || "Device",
         pushedAt: Date.now()
