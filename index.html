@@ -872,6 +872,15 @@
     ledger[name].push({type:"payment", amount, date: todayDateOnly(), time: new Date().toLocaleTimeString("ta-IN",{hour:'2-digit',minute:'2-digit'})});
     saveLedger();
   }
+  // Used when a bill is edited: if the original (pre-edit) bill was a
+  // credit sale, its ledger entry must be removed before the edited
+  // version's total/method is re-applied — otherwise the customer's
+  // balance would double-count the same bill.
+  function removeLedgerCreditByBillNo(name, billNo){
+    if(!name || !ledger[name]) return;
+    ledger[name] = ledger[name].filter(e => !(e.type === "credit" && e.billNo === billNo));
+    saveLedger();
+  }
   function ledgerBalance(name){
     const entries = ledger[name] || [];
     return entries.reduce((s,e)=> s + (e.type==="credit" ? e.amount : -e.amount), 0);
@@ -1781,6 +1790,13 @@
   });
 
   let payMethod = null;
+  // When a bill is reloaded from History for editing (see the 🔁 button
+  // in the history list), this holds { billNo, dateKey } for the original
+  // record so finalizeBill() can UPDATE that record in place instead of
+  // creating a brand-new sale. It is intentionally left null for the
+  // receipt screen's "🔁 மீண்டும்" button and for Standby bills, since
+  // those are meant to start a genuinely new sale, not edit an old one.
+  let editingBillRef = null;
 
   $("finishBtn").addEventListener("click", () => {
     if(bill.length === 0){
@@ -2088,13 +2104,43 @@
       const raw = localStorage.getItem(key);
       dayList = raw ? JSON.parse(raw) : [];
     }catch(e){ dayList = []; }
-    const billNo = dayList.length + 1;
+
+    // Consume any pending "editing a previous bill" reference immediately,
+    // so it can never accidentally apply to a later, unrelated bill.
+    const editRef = editingBillRef;
+    editingBillRef = null;
+
+    let billNo;
+    let existingIdx = -1;
+    if(editRef && editRef.dateKey === key){
+      existingIdx = dayList.findIndex(d => d.billNo === editRef.billNo);
+    }
+
     const itemsSnapshot = bill.map(b=>({name:b.name, qty:b.qty, price:b.price}));
     const time = new Date().toLocaleTimeString("ta-IN",{hour:'2-digit',minute:'2-digit'});
-    dayList.push({ billNo, time, total, method, received, balance, customerName: customerName || null, items: itemsSnapshot });
+    let isEdit = false;
+
+    if(existingIdx !== -1){
+      // Editing a previous bill: reuse its bill number and overwrite it
+      // in place, instead of appending a new sale to today's list.
+      isEdit = true;
+      const originalEntry = dayList[existingIdx];
+      billNo = originalEntry.billNo;
+      // If the original was a credit sale, remove its ledger entry first
+      // so the edited total/method doesn't double-count against that
+      // customer's balance.
+      if(originalEntry.method === "credit" && originalEntry.customerName){
+        removeLedgerCreditByBillNo(originalEntry.customerName, billNo);
+      }
+      dayList[existingIdx] = { billNo, time, total, method, received, balance, customerName: customerName || null, items: itemsSnapshot };
+    } else {
+      billNo = dayList.length + 1;
+      dayList.push({ billNo, time, total, method, received, balance, customerName: customerName || null, items: itemsSnapshot });
+    }
     try{ localStorage.setItem(key, JSON.stringify(dayList)); }catch(e){}
 
-    // Credit bill: add to that customer's running ledger balance.
+    // Credit bill: add to that customer's running ledger balance
+    // (applies whether this is a fresh sale or the edited version of one).
     if(method === "credit" && customerName){
       addLedgerCredit(customerName, total, billNo);
       updateLedgerBadge();
@@ -2102,13 +2148,13 @@
 
     // Fire-and-forget: never awaited, so a slow/offline connection can
     // never delay the receipt screen or the spoken confirmation below.
-    pushBillToCloud(todayDateOnly(), dayList[dayList.length-1]);
+    pushBillToCloud(todayDateOnly(), isEdit ? {...dayList[existingIdx], edited:true} : dayList[dayList.length-1]);
 
     // Spoken confirmation: a short finishing word, plus — when paying
     // by cash — the balance amount to give back / still collect, or —
     // when on credit — which customer's account it was added to, so
     // the shopkeeper hears it without having to look at the screen.
-    let speechText = "பில் முடிந்தது.";
+    let speechText = isEdit ? "பில் திருத்தப்பட்டு புதுப்பிக்கப்பட்டது." : "பில் முடிந்தது.";
     if(method === "cash" && balance > 0){
       speechText += " திரும்ப கொடுக்க வேண்டியது ரூபாய் " + balance.toFixed(0) + ".";
     } else if(method === "cash" && balance < 0){
@@ -2118,13 +2164,13 @@
     }
     speak(speechText);
     if(method === "cash" && balance > 0){
-      setStatus("✅ " + itemTypes + " பொருட்கள் — திரும்ப கொடுக்க வேண்டியது ₹" + balance.toFixed(0));
+      setStatus((isEdit ? "✏️ பில் #" + billNo + " புதுப்பிக்கப்பட்டது — " : "✅ ") + itemTypes + " பொருட்கள் — திரும்ப கொடுக்க வேண்டியது ₹" + balance.toFixed(0));
     } else if(method === "cash" && balance < 0){
       setStatus("⚠️ இன்னும் தேவை ₹" + Math.abs(balance).toFixed(0));
     } else if(method === "credit"){
-      setStatus("📒 " + customerName + " கணக்கில் ₹" + total.toFixed(0) + " பதிவு செய்யப்பட்டது");
+      setStatus((isEdit ? "✏️ பில் #" + billNo + " புதுப்பிக்கப்பட்டது — " : "📒 ") + customerName + " கணக்கில் ₹" + total.toFixed(0) + " பதிவு செய்யப்பட்டது");
     } else {
-      setStatus("பில் சேமிக்கப்பட்டது ✅ " + itemTypes + " பொருட்கள், ₹" + total.toFixed(0));
+      setStatus((isEdit ? "✏️ பில் #" + billNo + " புதுப்பிக்கப்பட்டது ✅ " : "பில் சேமிக்கப்பட்டது ✅ ") + itemTypes + " பொருட்கள், ₹" + total.toFixed(0));
     }
     lastFinishedItems = itemsSnapshot;
     bill = [];
@@ -2161,6 +2207,7 @@
       setStatus("மீண்டும் ஏற்ற பில் எதுவும் இல்லை");
       return;
     }
+    editingBillRef = null;
     bill = itemsToRepeat.map(it => ({itemId:null, name:it.name, price:it.price, qty:it.qty}));
     renderBill();
     $("receiptOverlay").classList.remove("show");
@@ -2469,11 +2516,16 @@
         btn.addEventListener("click", () => {
           const d = dayList[parseInt(btn.dataset.idx)];
           if(!d) return;
+          if(bill.length > 0){
+            const ok = confirm("தற்போதைய பில்லில் பொருட்கள் உள்ளன. அவை நீக்கப்பட்டு, பில் #" + d.billNo + " திருத்த ஏற்றப்படும். தொடரவா?");
+            if(!ok) return;
+          }
           bill = d.items.map(it => ({itemId:null, name:it.name, price:it.price, qty:it.qty}));
+          editingBillRef = { billNo: d.billNo, dateKey: todayKey() };
           renderBill();
           $("historyOverlay").classList.remove("show");
-          setStatus("பில் #" + d.billNo + " மீண்டும் ஏற்றப்பட்டது");
-          speak("பில் மீண்டும் ஏற்றப்பட்டது");
+          setStatus("பில் #" + d.billNo + " திருத்த ஏற்றப்பட்டது — முடிக்கும்போது இந்த பில் புதுப்பிக்கப்படும், புதிய பில் ஆகாது");
+          speak("பில் திருத்த ஏற்றப்பட்டது");
         });
       });
       drawPaymentPieChart(dayList);
@@ -2595,6 +2647,7 @@
 
   function putCurrentBillOnStandby(){
     if(bill.length === 0) return false;
+    editingBillRef = null;
     const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
     const time = new Date().toLocaleTimeString("ta-IN",{hour:'2-digit',minute:'2-digit'});
     standbyBills.push({
@@ -2647,6 +2700,7 @@
   function resumeStandbyBill(idx){
     const sb = standbyBills[idx];
     if(!sb) return;
+    editingBillRef = null;
     if(bill.length > 0){
       const ok = confirm("தற்போதைய பில்லில் பொருட்கள் உள்ளன. அதை Standby-ல் வைத்துவிட்டு இந்த பில்லை தொடரவா?");
       if(!ok) return;
