@@ -468,6 +468,19 @@
       <div class="field-label">இந்த Device / பணியாளர் பெயர்</div>
       <input type="text" id="deviceNameInput" placeholder="எ.கா. கவுண்டர் 1 / முருகன்">
       <div class="divider-note">💡 எல்லா device-களிலும் இதே Sync Code-ஐ போடவும். (பொருட்கள் பட்டியல் இணைக்கப்படாது — ஒவ்வொரு device-லும் தனித்தனியாக பொருட்களை சேர்க்கலாம்.) Device / பணியாளர் பெயரையும் இடவும் — பில் முடிக்கும்போது தானாக கிளவுட்-க்கு அனுப்பப்பட்டு, 📒 History-ல் "☁️ எல்லா Device முழு ரிப்போர்ட்"-ல் அந்த பெயருடன் விவரமாக காட்டப்படும்.</div>
+
+      <div class="field-label" style="margin-top:18px;">☁️ Auto Cloud Backup</div>
+      <div class="divider-note" id="autoBackupStatus" style="margin-top:4px;">சரிபார்க்கப்படுகிறது...</div>
+      <div style="display:flex;gap:10px;margin-top:8px;">
+        <button class="btn btn-history" id="cloudBackupNowBtn" style="flex:1;font-size:13px;">☁️ இப்போதே Backup</button>
+        <button class="btn btn-history" id="cloudRestoreBtn" style="flex:1;font-size:13px;">⬇️ Cloud Restore</button>
+      </div>
+      <div class="divider-note">💡 Sync Code அமைத்திருந்தால், ஒவ்வொரு நாளும் தானாக உங்கள் பொருட்கள்/விற்பனை/கடன் தகவல்கள் Cloud-ல் Backup ஆகும் — நீங்கள் எதுவும் தட்ட வேண்டாம். மொபைல் தொலைந்தாலோ மாறினாலோ, புதிய Device-ல் இதே Sync Code-ஐ இங்கு போட்டு "⬇️ Cloud Restore" தட்டி எல்லாவற்றையும் மீட்டெடுக்கலாம்.</div>
+
+      <div class="field-label" style="margin-top:18px;">📧 Email Backup</div>
+      <input type="text" id="backupEmailInput" placeholder="உங்கள் Email முகவரி" inputmode="email">
+      <button class="btn btn-history" id="emailBackupBtn" style="width:100%;margin-top:8px;font-size:13px;">📧 Backup-ஐ Email-க்கு அனுப்ப</button>
+      <div class="divider-note">💡 இது Email-ஐ தானாக அனுப்பாது — தட்டும்போது உங்கள் Gmail/Mail ஆப் Backup ஃபைலுடன் திறக்கும், நீங்கள் "Send" தட்ட வேண்டும். (ஒரு தட்டலில் ஃபைல் இணைக்கப்பட்டிருக்கும் — நீங்களே தேட வேண்டாம்.)</div>
     </div>
   </div>
 </div>
@@ -1147,10 +1160,13 @@
   // billing has zero extra network cost. See ensureFirebaseLoaded() below.
   const STORAGE_KEY_SYNCCODE = "kadai:synccode";
   const STORAGE_KEY_DEVICENAME = "kadai:devicename";
+  const STORAGE_KEY_BACKUPEMAIL = "kadai:backupemail";
   let syncCode = "";
   try{ syncCode = localStorage.getItem(STORAGE_KEY_SYNCCODE) || ""; }catch(e){ syncCode = ""; }
   let deviceName = "";
   try{ deviceName = localStorage.getItem(STORAGE_KEY_DEVICENAME) || ""; }catch(e){ deviceName = ""; }
+  let backupEmail = "";
+  try{ backupEmail = localStorage.getItem(STORAGE_KEY_BACKUPEMAIL) || ""; }catch(e){ backupEmail = ""; }
 
   const firebaseConfig = {
     apiKey: "AIzaSyAufVSNAP02BZXn3C2sOynytsayRmYbe4o",
@@ -2575,8 +2591,10 @@
     renderExistingItems();
     $("syncCodeInput").value = syncCode;
     $("deviceNameInput").value = deviceName;
+    $("backupEmailInput").value = backupEmail;
     $("syncSection").style.display = "none";
     $("toggleSyncSection").textContent = "🌐 Cloud Settings (பல Device ரிப்போர்ட்) — காட்ட தட்டவும்";
+    renderAutoBackupStatus();
     $("settingsOverlay").classList.add("show");
     prefetchFirebase();
   });
@@ -2602,16 +2620,20 @@
     return keys;
   }
 
-  function backupData(){
+  function buildBackupPayload(){
     const data = {};
     getAllKadaiKeys().forEach(k => { data[k] = localStorage.getItem(k); });
-    const payload = {
+    return {
       app: "kadai-bill",
       version: 1,
       shopName: shopName,
       exportedAt: new Date().toISOString(),
       data: data
     };
+  }
+
+  function backupData(){
+    const payload = buildBackupPayload();
     const json = JSON.stringify(payload, null, 2);
     const blob = new Blob([json], {type:"application/json"});
     const url = URL.createObjectURL(blob);
@@ -2626,6 +2648,155 @@
     setStatus("✅ Backup பதிவிறக்கம் ஆனது — Drive/WhatsApp-ல் பாதுகாப்பாக வைக்கவும்");
   }
 
+  // One-tap "send backup to my email": opens the phone's share sheet with
+  // the backup file already attached, so the shopkeeper only needs to
+  // pick Gmail/Mail and tap Send — no manual file hunting. This does NOT
+  // send email silently in the background; the shopkeeper still presses
+  // Send themselves once the mail app opens.
+  async function shareBackupViaEmail(){
+    const payload = buildBackupPayload();
+    const json = JSON.stringify(payload, null, 2);
+    const dateStr = new Date().toISOString().slice(0,10);
+    const filename = "kadai-bill-backup-" + dateStr + ".json";
+    const emailNote = backupEmail ? (" Email: " + backupEmail) : "";
+
+    if(navigator.canShare){
+      try{
+        const file = new File([json], filename, {type:"application/json"});
+        if(navigator.canShare({files:[file]})){
+          await navigator.share({
+            files: [file],
+            title: shopName + " - Backup " + dateStr,
+            text: "கடை பில் Backup (" + dateStr + ")." + emailNote
+          });
+          setStatus("✅ Share திறக்கப்பட்டது — Gmail/Mail தேர்ந்தெடுத்து Send தட்டவும்");
+          return;
+        }
+      }catch(e){
+        // User cancelled the share sheet — no further action needed.
+        return;
+      }
+    }
+    // Fallback: browser can't share files directly (older browsers) —
+    // download the file and remind them to attach it manually.
+    backupData();
+    alert(backupEmail
+      ? "இந்த Device-ல் நேரடியாக Email Share ஆதரிக்கவில்லை. Backup ஃபைல் பதிவிறக்கம் ஆனது — அதை " + backupEmail + " -க்கு Gmail மூலம் இணைத்து அனுப்பவும்."
+      : "இந்த Device-ல் நேரடியாக Email Share ஆதரிக்கவில்லை. Backup ஃபைல் பதிவிறக்கம் ஆனது — அதை உங்கள் Email-க்கு Gmail மூலம் இணைத்து அனுப்பவும்.");
+  }
+
+  $("emailBackupBtn").addEventListener("click", shareBackupViaEmail);
+
+  async function applyBackupPayload(payload){
+    if(!payload || !payload.data || payload.app !== "kadai-bill") return false;
+    Object.keys(payload.data).forEach(k => {
+      try{ localStorage.setItem(k, payload.data[k]); }catch(err){}
+    });
+    await loadState();
+    renderBill();
+    renderExistingItems();
+    updateStandbyBadge();
+    updateLedgerBadge();
+    return true;
+  }
+
+  // ---- Auto Cloud Backup: silently uploads the same backup payload to
+  // Firebase (under the shop's own Sync Code) once a day, so if the phone
+  // is lost or replaced, the shop owner can recover everything on a new
+  // device just by entering the same Sync Code — no need to have
+  // remembered to tap the manual Backup button beforehand.
+  const STORAGE_KEY_LASTAUTOBACKUP = "kadai:lastautobackup";
+  const AUTO_BACKUP_INTERVAL_MS = 24*60*60*1000;
+
+  async function pushBackupToCloud(){
+    if(!syncCode) return false;
+    try{
+      const db = await ensureFirebaseLoaded();
+      const payload = buildBackupPayload();
+      await db.ref("shops/" + sanitizeSyncCode(syncCode) + "/backup").set({
+        ...payload,
+        deviceName: deviceName || "Device",
+        backedUpAt: Date.now()
+      });
+      try{ localStorage.setItem(STORAGE_KEY_LASTAUTOBACKUP, Date.now().toString()); }catch(e){}
+      return true;
+    }catch(e){
+      return false;
+    }
+  }
+
+  // Runs once at app start: if a Sync Code is set and it has been a day
+  // (or more, or never) since the last successful cloud backup, push one
+  // in the background. Never blocks the UI — fire-and-forget.
+  function checkAutoBackupDue(){
+    if(!syncCode) return;
+    let last = 0;
+    try{ last = parseInt(localStorage.getItem(STORAGE_KEY_LASTAUTOBACKUP) || "0", 10); }catch(e){ last = 0; }
+    if(Date.now() - last >= AUTO_BACKUP_INTERVAL_MS){
+      pushBackupToCloud();
+    }
+  }
+
+  function formatBackupTimestamp(ms){
+    if(!ms) return null;
+    const d = new Date(ms);
+    return d.toLocaleDateString("ta-IN") + " " + d.toLocaleTimeString("ta-IN",{hour:'2-digit',minute:'2-digit'});
+  }
+
+  function renderAutoBackupStatus(){
+    const el = $("autoBackupStatus");
+    if(!el) return;
+    if(!syncCode){
+      el.textContent = "⚠️ Sync Code அமைக்கவில்லை — Auto Backup செயல்படாது. மேலே Sync Code இடவும்.";
+      return;
+    }
+    let last = 0;
+    try{ last = parseInt(localStorage.getItem(STORAGE_KEY_LASTAUTOBACKUP) || "0", 10); }catch(e){ last = 0; }
+    el.textContent = last
+      ? "✅ கடைசி Auto Backup: " + formatBackupTimestamp(last)
+      : "இன்னும் Auto Backup நடக்கவில்லை — சிறிது நேரத்தில் தானாக நடக்கும், அல்லது கீழே 'இப்போதே Backup' தட்டவும்.";
+  }
+
+  $("cloudBackupNowBtn").addEventListener("click", async () => {
+    if(!syncCode){
+      setStatus("முதலில் Sync Code அமைக்கவும்");
+      return;
+    }
+    setStatus("☁️ Cloud Backup செய்யப்படுகிறது...");
+    const ok = await pushBackupToCloud();
+    renderAutoBackupStatus();
+    setStatus(ok ? "✅ Cloud Backup முடிந்தது" : "❌ Cloud Backup முடியவில்லை. இணைய இணைப்பை சரிபார்க்கவும்.");
+  });
+
+  $("cloudRestoreBtn").addEventListener("click", async () => {
+    if(!syncCode){
+      setStatus("முதலில் Sync Code அமைக்கவும்");
+      return;
+    }
+    setStatus("☁️ Cloud Backup தேடப்படுகிறது...");
+    try{
+      const db = await ensureFirebaseLoaded();
+      const snap = await db.ref("shops/" + sanitizeSyncCode(syncCode) + "/backup").once("value");
+      const payload = snap.val();
+      if(!payload){
+        alert("இந்த Sync Code-க்கு Cloud Backup எதுவும் இல்லை.");
+        return;
+      }
+      const whenText = payload.backedUpAt ? formatBackupTimestamp(payload.backedUpAt) : "தெரியவில்லை";
+      const ok = confirm("Cloud Backup (" + whenText + ") கிடைத்தது. இதை மீட்டெடுக்கவா? இந்த Device-ல் உள்ள தற்போதைய தகவல்கள் மாற்றப்படும். தொடரவா?");
+      if(!ok) return;
+      const applied = await applyBackupPayload(payload);
+      if(applied){
+        $("settingsOverlay").classList.remove("show");
+        alert("Cloud Backup மீட்டெடுக்கப்பட்டது ✅");
+      } else {
+        alert("இது சரியான Backup தகவல் அல்ல.");
+      }
+    }catch(e){
+      alert("Cloud Backup பெற முடியவில்லை. இணைய இணைப்பை சரிபார்க்கவும்.");
+    }
+  });
+
   function restoreData(file){
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -2636,22 +2807,15 @@
         alert("இது சரியான Backup ஃபைல் அல்ல.");
         return;
       }
-      if(!payload || !payload.data || payload.app !== "kadai-bill"){
-        alert("இது கடை பில் Backup ஃபைல் அல்ல.");
-        return;
-      }
       const ok = confirm("இந்த Backup-ஐ மீட்டெடுக்கவா? இந்த Device-ல் உள்ள தற்போதைய பொருட்கள்/விற்பனை தகவல்கள் மாற்றப்படும். தொடரவா?");
       if(!ok) return;
-      Object.keys(payload.data).forEach(k => {
-        try{ localStorage.setItem(k, payload.data[k]); }catch(err){}
-      });
-      await loadState();
-      renderBill();
-      renderExistingItems();
-      updateStandbyBadge();
-      updateLedgerBadge();
-      $("settingsOverlay").classList.remove("show");
-      alert("Backup மீட்டெடுக்கப்பட்டது ✅");
+      const applied = await applyBackupPayload(payload);
+      if(applied){
+        $("settingsOverlay").classList.remove("show");
+        alert("Backup மீட்டெடுக்கப்பட்டது ✅");
+      } else {
+        alert("இது கடை பில் Backup ஃபைல் அல்ல.");
+      }
     };
     reader.readAsText(file);
   }
@@ -2672,6 +2836,8 @@
     try{ localStorage.setItem(STORAGE_KEY_DEVICENAME, deviceName); }catch(e){}
     syncCode = $("syncCodeInput").value.trim();
     try{ localStorage.setItem(STORAGE_KEY_SYNCCODE, syncCode); }catch(e){}
+    backupEmail = $("backupEmailInput").value.trim();
+    try{ localStorage.setItem(STORAGE_KEY_BACKUPEMAIL, backupEmail); }catch(e){}
     $("settingsOverlay").classList.remove("show");
   });
 
@@ -3171,6 +3337,10 @@
       // so the shopkeeper isn't stuck on a blank screen.
       try{ loadState(); renderBill(); }catch(e2){}
     }
+    // Fire-and-forget: checks whether a day has passed since the last
+    // cloud backup and silently pushes a fresh one if so. Does nothing
+    // if no Sync Code is set.
+    checkAutoBackupDue();
   }
 })();
 
