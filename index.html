@@ -132,6 +132,7 @@
   .item-price{font-size:16.5px;color:var(--gold);font-weight:700;}
   .item-stock-badge{font-size:12.5px;color:var(--chalk-dim);margin-top:1px;}
   .item-stock-badge.low{color:var(--danger);font-weight:700;}
+  .item-variant-hint{font-size:12px;color:var(--gold);margin-top:2px;}
   .item-add-badge{
     position:absolute;top:8px;right:8px;
     background:var(--gold);color:var(--board);
@@ -521,6 +522,25 @@
   </div>
 </div>
 
+<!-- Item variants manager: lets the shop owner set up weight/price options
+     for one item ONCE (e.g. மஞ்சள்தூள் 25gm-₹15, 50gm-₹30, 100gm-₹55...).
+     Whenever that item is tapped while billing, these show as a dropdown
+     list to pick from instead of always using the item's single price. -->
+<div class="overlay" id="itemVariantsOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title" id="itemVariantsTitle">விருப்பங்கள் <button class="icon-btn" id="closeItemVariants">✕</button></div>
+    <div id="itemVariantsList"></div>
+    <div class="field-label" style="margin-top:18px;">புதிய விருப்பம் சேர் (எ.கா. எடை)</div>
+    <div class="field-row">
+      <input type="text" id="variantLabelInput" placeholder="எ.கா. 100gm">
+      <input type="number" id="variantPriceInput" inputmode="decimal" placeholder="விலை ₹" style="flex:0 0 110px;">
+    </div>
+    <button class="save-btn" id="addVariantBtn" style="margin-top:8px;">+ சேர்</button>
+    <div class="divider-note">💡 இந்த பொருளை பில்லில் தட்டும்போது, இங்கு சேர்க்கப்பட்ட விருப்பங்கள் பட்டியலாக காட்டப்பட்டு, தேவையானதை தேர்வு செய்யலாம்.</div>
+  </div>
+</div>
+
 <!-- Ledger payment entry sheet -->
 <div class="overlay" id="ledgerPayOverlay">
   <div class="sheet">
@@ -560,6 +580,18 @@
       <button class="mic-mini" id="qtyCustomAddBtn" style="flex:0 0 60px;font-size:14px;font-weight:700;">சேர்</button>
     </div>
     <button class="btn btn-history" id="qtyPickerCancelBtn" style="width:100%;margin-top:14px;">✕ ரத்து செய்</button>
+  </div>
+</div>
+
+<!-- Variant picker: shown when tapping a listed item that has multiple
+     weight/price options set up once by the shop owner (e.g. மஞ்சள்தூள்
+     25gm/50gm/100gm/250gm each with its own price) — see itemVariantsOverlay
+     in Settings for where these are configured. -->
+<div class="overlay" id="variantPickerOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title" id="variantPickerTitle">விருப்பம் தேர்வு <button class="icon-btn" id="closeVariantPicker">✕</button></div>
+    <div id="variantPickerList"></div>
   </div>
 </div>
 
@@ -688,7 +720,7 @@
 <div class="overlay" id="receiptOverlay">
   <div class="sheet">
     <div class="sheet-handle"></div>
-    <div class="sheet-title">பில் முடிந்தது ✅</div>
+    <div class="sheet-title">பில் முடிந்தது ✅ <button class="icon-btn" id="closeReceipt">✕</button></div>
     <div id="receiptSummary"></div>
     <button class="save-btn" id="directPrintBtn" style="margin-top:16px;background:var(--gold);color:var(--board);">🔵 நேரடி பிரிண்ட் (Bluetooth)</button>
     <div class="divider-note" id="directPrintNote" style="margin-top:6px;">💡 "ESC/POS Bluetooth Print Service" ஆப் இருந்தால் நேரடியாக பிரிண்டர்-க்கு அனுப்பும் — PDF தேவையில்லை.</div>
@@ -726,6 +758,7 @@
   const STORAGE_KEY_STANDBY = "kadai:standby";
   const STORAGE_KEY_CURRENTBILL = "kadai:currentbill";
   const STORAGE_KEY_LEDGER = "kadai:ledger";
+  const STORAGE_KEY_STOCKLEDGER = "kadai:stockledger";
   const todayKey = () => "kadai:sales:" + new Date().toISOString().slice(0,10);
   const todayDateOnly = () => new Date().toISOString().slice(0,10);
 
@@ -810,6 +843,11 @@
   let bill = [];
   let standbyBills = [];
   let ledger = {}; // { customerName: [ {type:'credit'|'payment', amount, date, time, billNo} ] }
+  // { itemId: [ {type:'purchase'|'sale'|'return', qty, date, time, note} ] }
+  // "purchase" = stock added (restock); "sale" = deducted by a finished
+  // bill; "return" = added back because an edited bill now needs fewer
+  // units than before.
+  let stockLedger = {};
   let shopName = "என் கடை";
   let recognition = null;
   let listeningTarget = null;
@@ -840,6 +878,10 @@
       const raw5 = localStorage.getItem(STORAGE_KEY_LEDGER);
       ledger = raw5 ? JSON.parse(raw5) : {};
     }catch(e){ ledger = {}; }
+    try{
+      const raw6 = localStorage.getItem(STORAGE_KEY_STOCKLEDGER);
+      stockLedger = raw6 ? JSON.parse(raw6) : {};
+    }catch(e){ stockLedger = {}; }
     $("shopNameDisplay").textContent = shopName;
     $("shopNameInput").value = shopName;
     renderItems();
@@ -1275,6 +1317,7 @@
         <span class="item-add-badge">➕</span>
         <div class="item-name">${escapeHtml(it.name)}</div>
         <div class="item-price">₹${it.price}</div>
+        ${it.variants && it.variants.length > 0 ? `<div class="item-variant-hint">▾ ${it.variants.length} விருப்பங்கள்</div>` : ``}
       </div>
     `).join("");
     grid.querySelectorAll(".item-card").forEach(card => {
@@ -1284,7 +1327,11 @@
         card.classList.add("bump");
         setTimeout(()=>card.classList.remove("bump"), 350);
         qtyPickerQueue = [];
-        openQtyPickerFor(item);
+        if(item.variants && item.variants.length > 0){
+          openVariantPicker(item);
+        } else {
+          openQtyPickerFor(item);
+        }
       });
     });
   }
@@ -1648,6 +1695,35 @@
   let qtyPickerCurrentItem = null;
   const QTY_QUICK_OPTIONS = [0.10, 0.20, 0.25, 0.50, 0.75, 1, 2, 3, 4, 5, 10];
 
+  // Shows the weight/price options the shop owner configured once for this
+  // item (Settings → 📋). Picking one proceeds into the normal quantity
+  // picker, using that option's own price under a combined display name.
+  function openVariantPicker(item){
+    $("variantPickerTitle").childNodes[0].textContent = item.name + " ";
+    const listEl = $("variantPickerList");
+    listEl.innerHTML = item.variants.map((v, idx) => `
+      <div class="existing-item-row variant-pick-row" data-idx="${idx}" style="cursor:pointer;">
+        <div class="info">${escapeHtml(v.label)} — <b>₹${v.price}</b></div>
+        <div class="row-actions">
+          <button class="resume-btn">தேர்வு ➜</button>
+        </div>
+      </div>
+    `).join("");
+    listEl.querySelectorAll(".variant-pick-row").forEach(row=>{
+      row.addEventListener("click", ()=>{
+        const v = item.variants[parseInt(row.dataset.idx)];
+        $("variantPickerOverlay").classList.remove("show");
+        qtyPickerQueue = [];
+        openQtyPickerFor({ id: null, name: item.name + " (" + v.label + ")", price: v.price });
+      });
+    });
+    $("variantPickerOverlay").classList.add("show");
+  }
+
+  $("closeVariantPicker").addEventListener("click", ()=>{
+    $("variantPickerOverlay").classList.remove("show");
+  });
+
   function openQtyPickerFor(item){
     qtyPickerCurrentItem = item;
     $("qtyPickerTitle").textContent = item.name + " — எத்தனை?";
@@ -1666,7 +1742,11 @@
   function confirmQtyAndAdd(qty){
     if(!qtyPickerCurrentItem || isNaN(qty) || qty <= 0) return;
     const item = qtyPickerCurrentItem;
-    addToBill(item.id, qty);
+    if(item.id){
+      addToBill(item.id, qty);
+    } else {
+      addCustomToBill(item.name, item.price, qty);
+    }
     const amt = (item.price*qty).toFixed(0);
     setStatus(item.name + " × " + formatQty(qty) + " (₹" + amt + ") சேர்க்கப்பட்டது");
     speak(item.name + " " + formatQty(qty) + " சேர்க்கப்பட்டது");
@@ -2400,6 +2480,10 @@
     speak("கடைசி பில் மீண்டும் ஏற்றப்பட்டது");
   });
 
+  $("closeReceipt").addEventListener("click", () => {
+    $("receiptOverlay").classList.remove("show");
+  });
+
   $("receiptCloseBtn").addEventListener("click", () => {
     $("receiptOverlay").classList.remove("show");
   });
@@ -2628,13 +2712,18 @@
       }
       return `
       <div class="existing-item-row">
-        <div class="info">${escapeHtml(it.name)} — <b>₹${it.price}</b></div>
+        <div class="info">${escapeHtml(it.name)} — <b>₹${it.price}</b>${it.variants && it.variants.length > 0 ? ` <span style="color:var(--gold);font-size:13px;">(${it.variants.length} விருப்பங்கள்)</span>` : ``}</div>
         <div class="row-actions">
+          <button class="mini-btn variants-btn" data-id="${it.id}" title="விருப்பங்கள்">📋</button>
           <button class="mini-btn edit-btn" data-id="${it.id}">✏️</button>
           <button class="mini-btn del-btn" data-id="${it.id}">🗑️</button>
         </div>
       </div>`;
     }).join("");
+
+    list.querySelectorAll(".variants-btn").forEach(btn=>{
+      btn.addEventListener("click", ()=> openItemVariants(btn.dataset.id));
+    });
 
     list.querySelectorAll(".del-btn").forEach(btn=>{
       btn.addEventListener("click", async ()=>{
@@ -2677,6 +2766,75 @@
       });
     });
   }
+
+  // ---- Item variants manager (Settings → 📋): lets the shop owner set up
+  // weight/price options for one item once — e.g. மஞ்சள்தூள் 25gm-₹15,
+  // 50gm-₹30, 100gm-₹55, 250gm-₹140 — matching how many packet goods are
+  // actually priced. These then show as a pick-list whenever that item is
+  // tapped while billing (see openVariantPicker above).
+  let itemVariantsCurrentId = null;
+
+  function openItemVariants(itemId){
+    const it = items.find(i=>i.id===itemId);
+    if(!it) return;
+    itemVariantsCurrentId = itemId;
+    $("itemVariantsTitle").childNodes[0].textContent = it.name + " — விருப்பங்கள் ";
+    $("variantLabelInput").value = "";
+    $("variantPriceInput").value = "";
+    renderItemVariantsList();
+    $("itemVariantsOverlay").classList.add("show");
+  }
+
+  function renderItemVariantsList(){
+    const it = items.find(i=>i.id===itemVariantsCurrentId);
+    const listEl = $("itemVariantsList");
+    if(!it || !it.variants || it.variants.length === 0){
+      listEl.innerHTML = '<div class="divider-note" style="margin-top:0;">இன்னும் விருப்பங்கள் சேர்க்கப்படவில்லை.</div>';
+      return;
+    }
+    listEl.innerHTML = it.variants.map((v, idx) => `
+      <div class="existing-item-row">
+        <div class="info">${escapeHtml(v.label)} — <b>₹${v.price}</b></div>
+        <div class="row-actions">
+          <button class="mini-btn del-btn" data-idx="${idx}">🗑️</button>
+        </div>
+      </div>
+    `).join("");
+    listEl.querySelectorAll(".del-btn").forEach(btn=>{
+      btn.addEventListener("click", async ()=>{
+        const item = items.find(i=>i.id===itemVariantsCurrentId);
+        if(!item || !item.variants) return;
+        item.variants.splice(parseInt(btn.dataset.idx), 1);
+        await saveItems();
+        renderItemVariantsList();
+        renderItems();
+        renderExistingItems();
+      });
+    });
+  }
+
+  $("addVariantBtn").addEventListener("click", async ()=>{
+    const it = items.find(i=>i.id===itemVariantsCurrentId);
+    if(!it) return;
+    const label = $("variantLabelInput").value.trim();
+    const price = parseFloat($("variantPriceInput").value);
+    if(!label || isNaN(price) || price <= 0){
+      setStatus("விருப்ப பெயரும் விலையும் சரியாக இடவும்");
+      return;
+    }
+    if(!it.variants) it.variants = [];
+    it.variants.push({label, price});
+    await saveItems();
+    $("variantLabelInput").value = "";
+    $("variantPriceInput").value = "";
+    renderItemVariantsList();
+    renderItems();
+    renderExistingItems();
+  });
+
+  $("closeItemVariants").addEventListener("click", ()=>{
+    $("itemVariantsOverlay").classList.remove("show");
+  });
 
   $("historyBtn").addEventListener("click", async () => {
     const listEl = $("historyList");
@@ -2923,7 +3081,7 @@
     $("standbyOverlay").classList.remove("show");
   });
 
-  [$("settingsOverlay"), $("historyOverlay"), $("paymentOverlay"), $("receiptOverlay"), $("standbyOverlay"), $("reviewOverlay"), $("voiceConfirmOverlay")].forEach(ov => {
+  [$("settingsOverlay"), $("historyOverlay"), $("paymentOverlay"), $("receiptOverlay"), $("standbyOverlay"), $("reviewOverlay"), $("voiceConfirmOverlay"), $("variantPickerOverlay"), $("itemVariantsOverlay")].forEach(ov => {
     ov.addEventListener("click", (e)=>{ if(e.target === ov) ov.classList.remove("show"); });
   });
 
