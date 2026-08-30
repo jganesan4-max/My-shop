@@ -2935,6 +2935,28 @@
     $("settingsOverlay").classList.remove("show");
   });
 
+  // Belt-and-suspenders: also save each field the moment it changes,
+  // not only when ✕ is tapped. Dismissing Settings by tapping the dark
+  // area outside the sheet skips the ✕ handler entirely, which was
+  // silently losing anything typed into Sync Code / Device Name / Email /
+  // PIN — this makes sure that can never happen.
+  $("syncCodeInput").addEventListener("change", () => {
+    syncCode = $("syncCodeInput").value.trim();
+    try{ localStorage.setItem(STORAGE_KEY_SYNCCODE, syncCode); }catch(e){}
+  });
+  $("deviceNameInput").addEventListener("change", () => {
+    deviceName = $("deviceNameInput").value.trim();
+    try{ localStorage.setItem(STORAGE_KEY_DEVICENAME, deviceName); }catch(e){}
+  });
+  $("backupEmailInput").addEventListener("change", () => {
+    backupEmail = $("backupEmailInput").value.trim();
+    try{ localStorage.setItem(STORAGE_KEY_BACKUPEMAIL, backupEmail); }catch(e){}
+  });
+  $("securityPinInput").addEventListener("change", () => {
+    securityPin = $("securityPinInput").value.trim();
+    try{ localStorage.setItem(STORAGE_KEY_SECURITYPIN, securityPin); }catch(e){}
+  });
+
   $("addItemBtn").addEventListener("click", async () => {
     const name = $("newItemName").value.trim();
     const price = parseFloat($("newItemPrice").value);
