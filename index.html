@@ -2748,9 +2748,13 @@
       }catch(e){
         // AbortError = the person closed the share sheet themselves —
         // nothing went wrong, no need to alarm them. Anything else is a
-        // real failure and must be shown, not swallowed silently.
+        // real failure — some browsers (notably Desktop Chrome) claim
+        // they can share files via canShare() but then refuse when
+        // actually asked to. Fall back to a guaranteed-working download
+        // automatically so the person always ends up with a usable file.
         if(e && e.name === "AbortError") return;
-        alert("Email Share திறக்க முடியவில்லை. காரணம்: " + (e && e.message ? e.message : "தெரியவில்லை") + "\n\nபதிலாக 'Backup' தட்டி ஃபைலை பதிவிறக்கம் செய்து, நீங்களே Gmail-ல் இணைத்து அனுப்பலாம்.");
+        backupData();
+        alert("இந்த Browser-ல் Email Share நேரடியாக வேலை செய்யவில்லை (காரணம்: " + (e && e.message ? e.message : "தெரியவில்லை") + ").\n\nஅதற்கு பதிலாக Backup ஃபைல் பதிவிறக்கம் ஆனது — அதை " + (backupEmail || "உங்கள் Email") + " -க்கு Gmail மூலம் இணைத்து அனுப்பவும்.");
         return;
       }
     }
