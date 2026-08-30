@@ -234,6 +234,7 @@
   .existing-item-row.editing{gap:6px;}
   .existing-item-row.editing input.edit-name{width:auto !important;flex:1;padding:8px;font-size:14px;}
   .existing-item-row.editing input.edit-price{width:64px !important;flex:0 0 64px;padding:8px;font-size:14px;}
+  .existing-item-row.editing input.edit-stock{width:64px !important;flex:0 0 64px;padding:8px;font-size:14px;}
   .row-actions{display:flex;gap:6px;}
   .mini-btn{background:var(--board);border:1px solid rgba(245,241,227,0.25);color:var(--chalk);border-radius:8px;width:34px;height:34px;font-size:15px;flex-shrink:0;}
   .mini-btn.del-btn{color:var(--danger);border-color:rgba(224,82,82,0.4);}
@@ -458,6 +459,10 @@
     </div>
     <input type="file" id="restoreFileInput" accept="application/json" style="display:none;">
     <div class="divider-note">💡 "📤 Backup" தட்டி ஒரு ஃபைலை பதிவிறக்கம் செய்து, அதை Google Drive அல்லது WhatsApp (Message Yourself) மூலம் பாதுகாப்பாக வைக்கவும். மொபைல் தொலைந்தாலும், மாறினாலும், "📥 Restore" மூலம் அதே ஃபைலை தேர்ந்தெடுத்து பொருட்கள் மற்றும் விற்பனை தகவல்கள் முழுவதையும் மீட்டெடுக்கலாம்.</div>
+
+    <div class="field-label" style="margin-top:22px;">🔒 பாதுகாப்பு PIN (விருப்பம்)</div>
+    <input type="text" id="securityPinInput" placeholder="எ.கா. 1234" inputmode="numeric" maxlength="8">
+    <div class="divider-note">💡 இதை அமைத்தால், "கடன் கணக்கு"-ல் ஒரு வாடிக்கையாளரிடம் இருந்து பணம் பெற்றதை பதிவு செய்யும் முன் இந்த PIN-ஐ கேட்கும் — பணியாளர்கள் தவறாக/தானாக பணம் பெற்றதாக பதிவு செய்வதை தடுக்க. காலியாக விட்டால், வெறும் உறுதிப்படுத்தல் (Confirm) மட்டும் போதும்.</div>
 
     <div class="field-label" style="margin-top:22px;">
       <a href="javascript:void(0)" id="toggleSyncSection" style="color:var(--chalk-dim);text-decoration:underline;font-size:13px;">🌐 Cloud Settings (பல Device ரிப்போர்ட்) — காட்ட தட்டவும்</a>
@@ -737,9 +742,8 @@
     <div id="receiptSummary"></div>
     <button class="save-btn" id="directPrintBtn" style="margin-top:16px;background:var(--gold);color:var(--board);">🔵 நேரடி பிரிண்ட் (Bluetooth)</button>
     <div class="divider-note" id="directPrintNote" style="margin-top:6px;">💡 "ESC/POS Bluetooth Print Service" ஆப் இருந்தால் நேரடியாக பிரிண்டர்-க்கு அனுப்பும் — PDF தேவையில்லை.</div>
-    <div style="display:flex;gap:10px;margin-top:14px;">
-      <button class="btn btn-history" id="receiptPrintBtn" style="flex:1;">🖨️ PDF பிரிண்ட்</button>
-      <button class="btn btn-history" id="receiptRepeatBtn" style="flex:1;">🔁 மீண்டும்</button>
+    <div style="margin-top:14px;">
+      <button class="btn btn-history" id="receiptPrintBtn" style="width:100%;">🖨️ PDF பிரிண்ட்</button>
     </div>
     <div style="display:flex;gap:10px;margin-top:10px;">
       <button class="btn btn-history" id="sendWhatsappBtn" style="flex:1;font-size:14px;">💬 WhatsApp</button>
@@ -946,6 +950,62 @@
     return entries.reduce((s,e)=> s + (e.type==="credit" ? e.amount : -e.amount), 0);
   }
 
+  // ---- Stock ledger: tracks every stock movement (restock purchases,
+  // deductions from sales, additions back from edited bills) for items
+  // the shop owner has chosen to track. An item with stock === undefined
+  // is simply not tracked — nothing here touches it.
+  function saveStockLedger(){
+    try{ localStorage.setItem(STORAGE_KEY_STOCKLEDGER, JSON.stringify(stockLedger)); }catch(e){}
+  }
+  function addStockLedgerEntry(itemId, type, qty, note){
+    if(!stockLedger[itemId]) stockLedger[itemId] = [];
+    stockLedger[itemId].push({
+      type, qty, note: note || "",
+      date: todayDateOnly(),
+      time: new Date().toLocaleTimeString("ta-IN",{hour:'2-digit',minute:'2-digit'})
+    });
+    saveStockLedger();
+  }
+
+  // Compares what a bill sold BEFORE (oldItemsSnapshot, empty for a fresh
+  // bill) vs AFTER (newItemsSnapshot) and applies only the NET change to
+  // each tracked item's stock. This naturally handles a plain new sale
+  // (old=nothing) and an edited sale (old=the previous version) with the
+  // same logic — e.g. editing a bill from 2 units to 3 units of a tracked
+  // item only deducts 1 more; editing 3 down to 1 adds 2 back.
+  // Returns an array of item names that are now at/below the low-stock
+  // threshold, for a status-line warning.
+  function applyStockForBill(newItemsSnapshot, oldItemsSnapshot, billNo){
+    const LOW_STOCK_THRESHOLD = 5;
+    const oldMap = {};
+    (oldItemsSnapshot || []).forEach(it => {
+      if(it.itemId) oldMap[it.itemId] = (oldMap[it.itemId] || 0) + it.qty;
+    });
+    const newMap = {};
+    newItemsSnapshot.forEach(it => {
+      if(it.itemId) newMap[it.itemId] = (newMap[it.itemId] || 0) + it.qty;
+    });
+    const allIds = new Set([...Object.keys(oldMap), ...Object.keys(newMap)]);
+    const lowStockNames = [];
+    let changed = false;
+    allIds.forEach(id => {
+      const catalogItem = items.find(i => i.id === id);
+      if(!catalogItem || typeof catalogItem.stock !== "number") return;
+      const oldQty = oldMap[id] || 0;
+      const newQty = newMap[id] || 0;
+      const delta = newQty - oldQty; // +ve = more sold now, -ve = units returned
+      if(delta === 0) return;
+      catalogItem.stock = catalogItem.stock - delta;
+      addStockLedgerEntry(id, delta > 0 ? "sale" : "return", Math.abs(delta), "பில் #" + billNo);
+      changed = true;
+      if(catalogItem.stock <= LOW_STOCK_THRESHOLD){
+        lowStockNames.push(catalogItem.name + " (" + catalogItem.stock + ")");
+      }
+    });
+    if(changed) saveItems();
+    return lowStockNames;
+  }
+
   function renderLedger(){
     const listEl = $("ledgerList");
     const names = Object.keys(ledger).filter(n => ledgerBalance(n) > 0.001);
@@ -1003,6 +1063,16 @@
   $("ledgerPayConfirmBtn").addEventListener("click", ()=>{
     const amt = parseFloat($("ledgerPayAmount").value);
     if(isNaN(amt) || amt <= 0){ alert("சரியான தொகை இடவும்"); return; }
+    const ok = confirm(ledgerPayCurrentName + " கணக்கில் ரூபாய் " + amt.toFixed(0) + " பணமாக பெறப்பட்டதா? உறுதிப்படுத்தவும்.");
+    if(!ok) return;
+    if(securityPin){
+      const entered = prompt("பாதுகாப்பு PIN இடவும்:");
+      if(entered === null) return;
+      if(entered !== securityPin){
+        alert("தவறான PIN. பணம் பதிவு செய்யப்படவில்லை.");
+        return;
+      }
+    }
     addLedgerPayment(ledgerPayCurrentName, amt);
     $("ledgerPayOverlay").classList.remove("show");
     setStatus(ledgerPayCurrentName + " கணக்கில் ₹" + amt.toFixed(0) + " பணம் பெறப்பட்டது");
@@ -1167,6 +1237,13 @@
   try{ deviceName = localStorage.getItem(STORAGE_KEY_DEVICENAME) || ""; }catch(e){ deviceName = ""; }
   let backupEmail = "";
   try{ backupEmail = localStorage.getItem(STORAGE_KEY_BACKUPEMAIL) || ""; }catch(e){ backupEmail = ""; }
+  // Optional PIN the shop owner can set to require extra authorisation
+  // before a credit customer's payment is marked as received — useful if
+  // staff other than the owner also use the app. Empty = feature off,
+  // just a plain confirmation dialog is used instead.
+  const STORAGE_KEY_SECURITYPIN = "kadai:securitypin";
+  let securityPin = "";
+  try{ securityPin = localStorage.getItem(STORAGE_KEY_SECURITYPIN) || ""; }catch(e){ securityPin = ""; }
 
   const firebaseConfig = {
     apiKey: "AIzaSyAufVSNAP02BZXn3C2sOynytsayRmYbe4o",
@@ -2397,16 +2474,18 @@
       existingIdx = dayList.findIndex(d => d.billNo === editRef.billNo);
     }
 
-    const itemsSnapshot = bill.map(b=>({name:b.name, qty:b.qty, price:b.price}));
+    const itemsSnapshot = bill.map(b=>({itemId:b.itemId||null, name:b.name, qty:b.qty, price:b.price}));
     const time = new Date().toLocaleTimeString("ta-IN",{hour:'2-digit',minute:'2-digit'});
     let isEdit = false;
 
+    let oldItemsSnapshot = [];
     if(existingIdx !== -1){
       // Editing a previous bill: reuse its bill number and overwrite it
       // in place, instead of appending a new sale to today's list.
       isEdit = true;
       const originalEntry = dayList[existingIdx];
       billNo = originalEntry.billNo;
+      oldItemsSnapshot = originalEntry.items || [];
       // If the original was a credit sale, remove its ledger entry first
       // so the edited total/method doesn't double-count against that
       // customer's balance.
@@ -2419,6 +2498,11 @@
       dayList.push({ billNo, time, total, method, received, balance, customerName: customerName || null, items: itemsSnapshot });
     }
     try{ localStorage.setItem(key, JSON.stringify(dayList)); }catch(e){}
+
+    // Deduct stock for whatever's newly sold, and add back stock for
+    // anything an edit removed — see applyStockForBill for how the two
+    // snapshots (before/after) are compared to get the right net change.
+    const lowStockNames = applyStockForBill(itemsSnapshot, oldItemsSnapshot, billNo);
 
     // Credit bill: add to that customer's running ledger balance
     // (applies whether this is a fresh sale or the edited version of one).
@@ -2453,6 +2537,10 @@
     } else {
       setStatus((isEdit ? "✏️ பில் #" + billNo + " புதுப்பிக்கப்பட்டது ✅ " : "பில் சேமிக்கப்பட்டது ✅ ") + itemTypes + " பொருட்கள், ₹" + total.toFixed(0));
     }
+    if(lowStockNames && lowStockNames.length > 0){
+      const statusLineEl = $("statusLine");
+      statusLineEl.textContent += " | ⚠️ குறைவான இருப்பு: " + lowStockNames.join(", ");
+    }
     lastFinishedItems = itemsSnapshot;
     bill = [];
     renderBill();
@@ -2477,24 +2565,6 @@
     $("receiptOverlay").dataset.current = JSON.stringify(receipt);
     $("receiptOverlay").classList.add("show");
   }
-
-  $("receiptRepeatBtn").addEventListener("click", () => {
-    let itemsToRepeat = lastFinishedItems;
-    if(!itemsToRepeat || itemsToRepeat.length === 0){
-      const dayList = getTodayList();
-      if(dayList.length > 0) itemsToRepeat = dayList[dayList.length - 1].items;
-    }
-    if(!itemsToRepeat || itemsToRepeat.length === 0){
-      setStatus("மீண்டும் ஏற்ற பில் எதுவும் இல்லை");
-      return;
-    }
-    editingBillRef = null;
-    bill = itemsToRepeat.map(it => ({itemId:null, name:it.name, price:it.price, qty:it.qty}));
-    renderBill();
-    $("receiptOverlay").classList.remove("show");
-    setStatus("கடைசி பில் மீண்டும் ஏற்றப்பட்டது (" + bill.length + " பொருட்கள்)");
-    speak("கடைசி பில் மீண்டும் ஏற்றப்பட்டது");
-  });
 
   $("closeReceipt").addEventListener("click", () => {
     $("receiptOverlay").classList.remove("show");
@@ -2592,6 +2662,7 @@
     $("syncCodeInput").value = syncCode;
     $("deviceNameInput").value = deviceName;
     $("backupEmailInput").value = backupEmail;
+    $("securityPinInput").value = securityPin;
     $("syncSection").style.display = "none";
     $("toggleSyncSection").textContent = "🌐 Cloud Settings (பல Device ரிப்போர்ட்) — காட்ட தட்டவும்";
     renderAutoBackupStatus();
@@ -2669,11 +2740,17 @@
             title: shopName + " - Backup " + dateStr,
             text: "கடை பில் Backup (" + dateStr + ")." + emailNote
           });
-          setStatus("✅ Share திறக்கப்பட்டது — Gmail/Mail தேர்ந்தெடுத்து Send தட்டவும்");
+          // The Settings screen sits on top of the status line, so use an
+          // alert here — it always shows, regardless of what's open.
+          alert("✅ Share திறந்தது. இப்போது Gmail/Mail தேர்ந்தெடுத்து 'Send' தட்டவும் — அது இன்னும் அனுப்பப்படவில்லை, கடைசி படி நீங்கள் தட்ட வேண்டும்.");
           return;
         }
       }catch(e){
-        // User cancelled the share sheet — no further action needed.
+        // AbortError = the person closed the share sheet themselves —
+        // nothing went wrong, no need to alarm them. Anything else is a
+        // real failure and must be shown, not swallowed silently.
+        if(e && e.name === "AbortError") return;
+        alert("Email Share திறக்க முடியவில்லை. காரணம்: " + (e && e.message ? e.message : "தெரியவில்லை") + "\n\nபதிலாக 'Backup' தட்டி ஃபைலை பதிவிறக்கம் செய்து, நீங்களே Gmail-ல் இணைத்து அனுப்பலாம்.");
         return;
       }
     }
@@ -2709,7 +2786,7 @@
   const AUTO_BACKUP_INTERVAL_MS = 24*60*60*1000;
 
   async function pushBackupToCloud(){
-    if(!syncCode) return false;
+    if(!syncCode) return { ok:false, error:"Sync Code அமைக்கப்படவில்லை" };
     try{
       const db = await ensureFirebaseLoaded();
       const payload = buildBackupPayload();
@@ -2719,9 +2796,9 @@
         backedUpAt: Date.now()
       });
       try{ localStorage.setItem(STORAGE_KEY_LASTAUTOBACKUP, Date.now().toString()); }catch(e){}
-      return true;
+      return { ok:true };
     }catch(e){
-      return false;
+      return { ok:false, error: (e && e.message) ? e.message : String(e) };
     }
   }
 
@@ -2759,13 +2836,24 @@
 
   $("cloudBackupNowBtn").addEventListener("click", async () => {
     if(!syncCode){
-      setStatus("முதலில் Sync Code அமைக்கவும்");
+      alert("முதலில் மேலே Sync Code அமைக்கவும்.");
       return;
     }
-    setStatus("☁️ Cloud Backup செய்யப்படுகிறது...");
-    const ok = await pushBackupToCloud();
+    const originalLabel = $("cloudBackupNowBtn").textContent;
+    $("cloudBackupNowBtn").textContent = "☁️ செய்யப்படுகிறது...";
+    $("cloudBackupNowBtn").disabled = true;
+    const result = await pushBackupToCloud();
+    $("cloudBackupNowBtn").textContent = originalLabel;
+    $("cloudBackupNowBtn").disabled = false;
     renderAutoBackupStatus();
-    setStatus(ok ? "✅ Cloud Backup முடிந்தது" : "❌ Cloud Backup முடியவில்லை. இணைய இணைப்பை சரிபார்க்கவும்.");
+    // The Settings screen sits on top of the status line, so this must
+    // use an alert — otherwise the result is invisible while Settings
+    // is open, which is exactly what was happening before this fix.
+    if(result.ok){
+      alert("✅ Cloud Backup முடிந்தது.");
+    } else {
+      alert("❌ Cloud Backup முடியவில்லை.\n\nகாரணம்: " + result.error + "\n\nஇணைய இணைப்பை சரிபார்த்து மீண்டும் முயற்சிக்கவும்.");
+    }
   });
 
   $("cloudRestoreBtn").addEventListener("click", async () => {
@@ -2838,6 +2926,8 @@
     try{ localStorage.setItem(STORAGE_KEY_SYNCCODE, syncCode); }catch(e){}
     backupEmail = $("backupEmailInput").value.trim();
     try{ localStorage.setItem(STORAGE_KEY_BACKUPEMAIL, backupEmail); }catch(e){}
+    securityPin = $("securityPinInput").value.trim();
+    try{ localStorage.setItem(STORAGE_KEY_SECURITYPIN, securityPin); }catch(e){}
     $("settingsOverlay").classList.remove("show");
   });
 
@@ -2870,22 +2960,31 @@
         <div class="existing-item-row editing" data-id="${it.id}">
           <input type="text" class="edit-name" value="${escapeHtml(it.name)}">
           <input type="number" class="edit-price" inputmode="decimal" value="${it.price}">
+          <input type="number" class="edit-stock" inputmode="decimal" placeholder="இருப்பு" value="${typeof it.stock === 'number' ? it.stock : ''}">
           <div class="row-actions">
             <button class="mini-btn save-edit-btn" data-id="${it.id}">✔️</button>
             <button class="mini-btn cancel-edit-btn" data-id="${it.id}">✖️</button>
           </div>
         </div>`;
       }
+      const stockText = typeof it.stock === "number"
+        ? ` <span style="color:${it.stock<=5?'var(--danger)':'var(--chalk-dim)'};font-size:13px;">(இருப்பு: ${it.stock})</span>`
+        : ``;
       return `
       <div class="existing-item-row">
-        <div class="info">${escapeHtml(it.name)} — <b>₹${it.price}</b>${it.variants && it.variants.length > 0 ? ` <span style="color:var(--gold);font-size:13px;">(${it.variants.length} விருப்பங்கள்)</span>` : ``}</div>
+        <div class="info">${escapeHtml(it.name)} — <b>₹${it.price}</b>${stockText}${it.variants && it.variants.length > 0 ? ` <span style="color:var(--gold);font-size:13px;">(${it.variants.length} விருப்பங்கள்)</span>` : ``}</div>
         <div class="row-actions">
+          <button class="mini-btn stock-btn" data-id="${it.id}" title="இருப்பு சேர்">📦</button>
           <button class="mini-btn variants-btn" data-id="${it.id}" title="விருப்பங்கள்">📋</button>
           <button class="mini-btn edit-btn" data-id="${it.id}">✏️</button>
           <button class="mini-btn del-btn" data-id="${it.id}">🗑️</button>
         </div>
       </div>`;
     }).join("");
+
+    list.querySelectorAll(".stock-btn").forEach(btn=>{
+      btn.addEventListener("click", ()=> promptRestock(btn.dataset.id));
+    });
 
     list.querySelectorAll(".variants-btn").forEach(btn=>{
       btn.addEventListener("click", ()=> openItemVariants(btn.dataset.id));
@@ -2923,6 +3022,19 @@
           setStatus("பொருள் பெயரும் விலையும் சரியாக இடவும்");
           return;
         }
+        const stockInput = row.querySelector(".edit-stock");
+        const stockRaw = stockInput ? stockInput.value.trim() : "";
+        const oldStock = typeof it.stock === "number" ? it.stock : null;
+        if(stockRaw === ""){
+          delete it.stock;
+        } else {
+          const sv = parseFloat(stockRaw);
+          if(!isNaN(sv) && sv >= 0) it.stock = sv;
+        }
+        if(typeof it.stock === "number" && it.stock !== oldStock){
+          const delta = it.stock - (oldStock || 0);
+          addStockLedgerEntry(it.id, "adjust", Math.abs(delta), "Settings-ல் நேரடியாக மாற்றப்பட்டது (" + (oldStock === null ? "தொடங்கியது" : oldStock) + " → " + it.stock + ")");
+        }
         it.name = newName;
         it.price = newPrice;
         editingItemId = null;
@@ -2931,6 +3043,27 @@
         renderExistingItems();
       });
     });
+  }
+
+  // Quick "add purchased stock" action from the Settings item row (📦).
+  // Uses the browser's native prompt(), matching the pattern already used
+  // for editing a bill row's quantity elsewhere in this app.
+  function promptRestock(itemId){
+    const it = items.find(i=>i.id===itemId);
+    if(!it) return;
+    const input = prompt("சேர்க்க வேண்டிய இருப்பு எண்ணிக்கை — " + it.name, "");
+    if(input === null) return;
+    const qty = parseFloat(input);
+    if(isNaN(qty) || qty <= 0){
+      setStatus("சரியான எண்ணிக்கை இடவும்");
+      return;
+    }
+    it.stock = (typeof it.stock === "number" ? it.stock : 0) + qty;
+    saveItems();
+    addStockLedgerEntry(itemId, "purchase", qty, "இருப்பு சேர்க்கப்பட்டது");
+    renderExistingItems();
+    renderItems();
+    setStatus(it.name + " இருப்பில் " + qty + " சேர்க்கப்பட்டது. புதிய இருப்பு: " + it.stock);
   }
 
   // ---- Item variants manager (Settings → 📋): lets the shop owner set up
