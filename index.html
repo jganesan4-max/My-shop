@@ -876,6 +876,20 @@
       const raw = localStorage.getItem(STORAGE_KEY_ITEMS);
       items = raw ? JSON.parse(raw) : DEFAULT_ITEMS.slice();
     }catch(e){ items = DEFAULT_ITEMS.slice(); }
+    // One-time cleanup: earlier versions of this app could leave stock
+    // numbers with ugly floating-point drift (e.g. 0.8999999999999999).
+    // Clean those up immediately on load, not just from the next sale.
+    let stockCleanupNeeded = false;
+    items.forEach(it => {
+      if(typeof it.stock === "number"){
+        const cleaned = roundStock(it.stock);
+        if(cleaned !== it.stock){
+          it.stock = cleaned;
+          stockCleanupNeeded = true;
+        }
+      }
+    });
+    if(stockCleanupNeeded) saveItems();
     try{
       const raw2 = localStorage.getItem(STORAGE_KEY_SHOPNAME);
       shopName = raw2 || "என் கடை";
@@ -975,6 +989,19 @@
   // item only deducts 1 more; editing 3 down to 1 adds 2 back.
   // Returns an array of item names that are now at/below the low-stock
   // threshold, for a status-line warning.
+  // Floating point subtraction (e.g. 0.9 - 0.1) produces ugly values like
+  // 0.7999999999999999. Round to 2 decimals everywhere stock is written,
+  // and format cleanly (no trailing zeros for whole numbers) wherever
+  // it's displayed.
+  function roundStock(n){
+    return Math.round(n * 100) / 100;
+  }
+  function formatStock(n){
+    if(typeof n !== "number") return n;
+    const r = roundStock(n);
+    return Number.isInteger(r) ? String(r) : r.toFixed(2);
+  }
+
   function applyStockForBill(newItemsSnapshot, oldItemsSnapshot, billNo){
     const LOW_STOCK_THRESHOLD = 5;
     const oldMap = {};
@@ -995,11 +1022,11 @@
       const newQty = newMap[id] || 0;
       const delta = newQty - oldQty; // +ve = more sold now, -ve = units returned
       if(delta === 0) return;
-      catalogItem.stock = catalogItem.stock - delta;
+      catalogItem.stock = roundStock(catalogItem.stock - delta);
       addStockLedgerEntry(id, delta > 0 ? "sale" : "return", Math.abs(delta), "பில் #" + billNo);
       changed = true;
       if(catalogItem.stock <= LOW_STOCK_THRESHOLD){
-        lowStockNames.push(catalogItem.name + " (" + catalogItem.stock + ")");
+        lowStockNames.push(catalogItem.name + " (" + formatStock(catalogItem.stock) + ")");
       }
     });
     if(changed) saveItems();
@@ -1449,6 +1476,17 @@
     renderBill();
   }
 
+  // Used for an item sold via one of its weight/price options (e.g.
+  // "Biscuit (Big)"). Keeps itemId pointing at the BASE catalog item so
+  // stock tracking still deducts correctly — only name/price differ, and
+  // those come from the chosen variant, not the item's own base price.
+  function addVariantToBill(baseItemId, name, price, qty){
+    const existing = bill.find(b => b.itemId === baseItemId && b.name === name && b.price === price);
+    if(existing){ existing.qty += qty; }
+    else{ bill.push({itemId: baseItemId, name, price, qty}); }
+    renderBill();
+  }
+
   function removeBillRow(index){
     bill.splice(index,1);
     renderBill();
@@ -1807,7 +1845,7 @@
         const v = item.variants[parseInt(row.dataset.idx)];
         $("variantPickerOverlay").classList.remove("show");
         qtyPickerQueue = [];
-        openQtyPickerFor({ id: null, name: item.name + " (" + v.label + ")", price: v.price });
+        openQtyPickerFor({ id: item.id, isVariant: true, name: item.name + " (" + v.label + ")", price: v.price });
       });
     });
     $("variantPickerOverlay").classList.add("show");
@@ -1835,7 +1873,9 @@
   function confirmQtyAndAdd(qty){
     if(!qtyPickerCurrentItem || isNaN(qty) || qty <= 0) return;
     const item = qtyPickerCurrentItem;
-    if(item.id){
+    if(item.isVariant){
+      addVariantToBill(item.id, item.name, item.price, qty);
+    } else if(item.id){
       addToBill(item.id, qty);
     } else {
       addCustomToBill(item.name, item.price, qty);
@@ -2855,6 +2895,12 @@
     // is open, which is exactly what was happening before this fix.
     if(result.ok){
       alert("✅ Cloud Backup முடிந்தது.");
+    } else if(result.error && /permission/i.test(result.error)){
+      // "Permission denied" from Firebase means the security rules
+      // rejected the write because sign-in didn't actually succeed —
+      // almost always because Anonymous Sign-In isn't enabled in the
+      // Firebase project yet. Not an internet problem.
+      alert("❌ Cloud Backup முடியவில்லை.\n\nகாரணம்: Permission denied.\n\nஇது இணைய இணைப்பு பிரச்சனை அல்ல — Firebase Console-ல் Authentication → Sign-in method-ல் 'Anonymous' இயக்கப்படவில்லை என்பதே பொதுவான காரணம். அதை Enable செய்து மீண்டும் முயற்சிக்கவும்.");
     } else {
       alert("❌ Cloud Backup முடியவில்லை.\n\nகாரணம்: " + result.error + "\n\nஇணைய இணைப்பை சரிபார்த்து மீண்டும் முயற்சிக்கவும்.");
     }
@@ -2986,7 +3032,7 @@
         <div class="existing-item-row editing" data-id="${it.id}">
           <input type="text" class="edit-name" value="${escapeHtml(it.name)}">
           <input type="number" class="edit-price" inputmode="decimal" value="${it.price}">
-          <input type="number" class="edit-stock" inputmode="decimal" placeholder="இருப்பு" value="${typeof it.stock === 'number' ? it.stock : ''}">
+          <input type="number" class="edit-stock" inputmode="decimal" placeholder="இருப்பு" value="${typeof it.stock === 'number' ? formatStock(it.stock) : ''}">
           <div class="row-actions">
             <button class="mini-btn save-edit-btn" data-id="${it.id}">✔️</button>
             <button class="mini-btn cancel-edit-btn" data-id="${it.id}">✖️</button>
@@ -2994,7 +3040,7 @@
         </div>`;
       }
       const stockText = typeof it.stock === "number"
-        ? ` <span style="color:${it.stock<=5?'var(--danger)':'var(--chalk-dim)'};font-size:13px;">(இருப்பு: ${it.stock})</span>`
+        ? ` <span style="color:${it.stock<=5?'var(--danger)':'var(--chalk-dim)'};font-size:13px;">(இருப்பு: ${formatStock(it.stock)})</span>`
         : ``;
       return `
       <div class="existing-item-row">
@@ -3055,11 +3101,11 @@
           delete it.stock;
         } else {
           const sv = parseFloat(stockRaw);
-          if(!isNaN(sv) && sv >= 0) it.stock = sv;
+          if(!isNaN(sv) && sv >= 0) it.stock = roundStock(sv);
         }
         if(typeof it.stock === "number" && it.stock !== oldStock){
           const delta = it.stock - (oldStock || 0);
-          addStockLedgerEntry(it.id, "adjust", Math.abs(delta), "Settings-ல் நேரடியாக மாற்றப்பட்டது (" + (oldStock === null ? "தொடங்கியது" : oldStock) + " → " + it.stock + ")");
+          addStockLedgerEntry(it.id, "adjust", Math.abs(delta), "Settings-ல் நேரடியாக மாற்றப்பட்டது (" + (oldStock === null ? "தொடங்கியது" : formatStock(oldStock)) + " → " + formatStock(it.stock) + ")");
         }
         it.name = newName;
         it.price = newPrice;
@@ -3084,12 +3130,12 @@
       setStatus("சரியான எண்ணிக்கை இடவும்");
       return;
     }
-    it.stock = (typeof it.stock === "number" ? it.stock : 0) + qty;
+    it.stock = roundStock((typeof it.stock === "number" ? it.stock : 0) + qty);
     saveItems();
     addStockLedgerEntry(itemId, "purchase", qty, "இருப்பு சேர்க்கப்பட்டது");
     renderExistingItems();
     renderItems();
-    setStatus(it.name + " இருப்பில் " + qty + " சேர்க்கப்பட்டது. புதிய இருப்பு: " + it.stock);
+    setStatus(it.name + " இருப்பில் " + qty + " சேர்க்கப்பட்டது. புதிய இருப்பு: " + formatStock(it.stock));
   }
 
   // ---- Item variants manager (Settings → 📋): lets the shop owner set up
