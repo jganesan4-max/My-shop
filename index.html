@@ -329,6 +329,21 @@
   .ledger-row .info{font-size:15px;}
   .ledger-row .info .meta{display:block;color:var(--chalk-dim);font-size:13px;margin-top:2px;}
   .ledger-row .amt{color:var(--danger);font-weight:700;font-size:17px;}
+  .reminder-row{
+    background:rgba(242,176,59,0.08);border:1px solid rgba(242,176,59,0.3);border-radius:10px;
+    padding:10px 12px;margin-bottom:8px;
+  }
+  .reminder-row .r-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+  .reminder-row .r-name{font-size:15px;font-weight:600;}
+  .reminder-row .r-name .meta{display:block;color:var(--chalk-dim);font-size:12.5px;margin-top:2px;font-weight:400;}
+  .reminder-row .r-amt{color:var(--danger);font-weight:700;font-size:16px;}
+  .reminder-row .r-actions{display:flex;gap:8px;}
+  .reminder-btn{
+    flex:1;border:none;border-radius:8px;padding:9px 6px;font-size:13.5px;font-weight:700;
+    font-family:'Baloo Thambi 2',sans-serif;display:flex;align-items:center;justify-content:center;gap:5px;
+  }
+  .reminder-btn.wa{background:#25D366;color:#0b2e1a;}
+  .reminder-btn.sms{background:var(--board-lighter);color:var(--chalk);border:1px solid rgba(245,241,227,0.2);}
   .customer-search-row{
     padding:12px 12px;border-bottom:1px solid rgba(245,241,227,0.1);
     display:flex;justify-content:space-between;align-items:center;
@@ -517,6 +532,12 @@
   <div class="sheet">
     <div class="sheet-handle"></div>
     <div class="sheet-title">📒 கடன் கணக்கு (Ledger) <button class="icon-btn" id="closeLedger">✕</button></div>
+    <div id="reminderSection" style="display:none;">
+      <div class="field-label" style="margin-top:0;">🔔 நினைவூட்டல் அனுப்ப வேண்டியவர்கள்</div>
+      <div id="reminderList"></div>
+      <div class="divider-note" style="margin-top:6px;">💡 இது தானாக அனுப்பாது — WhatsApp/SMS தட்டினால் தொகை ஏற்கனவே தட்டச்சு செய்யப்பட்டு திறக்கும், நீங்கள் "Send" தட்ட வேண்டும். கடைசியாக அனுப்பிய 7 நாட்களுக்குப் பிறகு மீண்டும் இங்கு காட்டப்படும்.</div>
+      <div class="pr-line" style="border-top:2px dashed rgba(245,241,227,0.2);margin:16px 0;"></div>
+    </div>
     <div id="ledgerList"></div>
     <div class="history-day-total" id="ledgerTotalDue"></div>
     <div class="divider-note">💡 வாடிக்கையாளர் பணம் கொடுக்கும்போது "பணம் பெற்றது" தட்டி பதிவு செய்யவும் — நிலுவை தொகை தானாக குறையும். பெயரை தட்டினால் முழு விவரமும் தெரியும்.</div>
@@ -530,6 +551,7 @@
     <div class="sheet-handle"></div>
     <div class="sheet-title" id="ledgerDetailTitle">வாடிக்கையாளர் <button class="icon-btn" id="closeLedgerDetail">✕</button></div>
     <div class="history-day-total" id="ledgerDetailBalance" style="text-align:center;margin-bottom:6px;"></div>
+    <div class="divider-note" id="ledgerDetailPhone" style="margin-top:0;text-align:center;"></div>
     <div id="ledgerDetailList"></div>
 
     <button class="save-btn" id="ledgerDetailDirectPrintBtn" style="margin-top:16px;background:var(--gold);color:var(--board);">🔵 நேரடி பிரிண்ட் (Bluetooth)</button>
@@ -727,6 +749,9 @@
         <div id="creditCustomerSearchResults" style="max-height:200px;overflow-y:auto;margin-top:8px;"></div>
       </div>
 
+      <div class="field-label" style="color:var(--chalk);text-align:left;">மொபைல் நம்பர் (விருப்பம் — நினைவூட்டல் அனுப்ப)</div>
+      <input type="text" id="creditCustomerPhone" placeholder="எ.கா. 9876543210" inputmode="tel" maxlength="10">
+
       <div class="divider-note">💡 இந்த தொகை பணமாக இன்னும் பெறப்படவில்லை — பெயருடன் பதிவு செய்யப்படும்.</div>
     </div>
 
@@ -775,6 +800,7 @@
   const STORAGE_KEY_STANDBY = "kadai:standby";
   const STORAGE_KEY_CURRENTBILL = "kadai:currentbill";
   const STORAGE_KEY_LEDGER = "kadai:ledger";
+  const STORAGE_KEY_CUSTOMER_CONTACTS = "kadai:customercontacts";
   const STORAGE_KEY_STOCKLEDGER = "kadai:stockledger";
   const todayKey = () => "kadai:sales:" + new Date().toISOString().slice(0,10);
   const todayDateOnly = () => new Date().toISOString().slice(0,10);
@@ -860,6 +886,11 @@
   let bill = [];
   let standbyBills = [];
   let ledger = {}; // { customerName: [ {type:'credit'|'payment', amount, date, time, billNo} ] }
+  // { customerName: { phone: "9876543210", lastReminded: <ms timestamp> } }
+  // Used for the weekly balance-reminder feature — WhatsApp/SMS can't be
+  // sent silently from a webpage, so this tracks who's "due" for a
+  // one-tap reminder rather than actually auto-sending anything.
+  let customerContacts = {};
   // { itemId: [ {type:'purchase'|'sale'|'return', qty, date, time, note} ] }
   // "purchase" = stock added (restock); "sale" = deducted by a finished
   // bill; "return" = added back because an edited bill now needs fewer
@@ -913,6 +944,10 @@
       const raw6 = localStorage.getItem(STORAGE_KEY_STOCKLEDGER);
       stockLedger = raw6 ? JSON.parse(raw6) : {};
     }catch(e){ stockLedger = {}; }
+    try{
+      const raw7 = localStorage.getItem(STORAGE_KEY_CUSTOMER_CONTACTS);
+      customerContacts = raw7 ? JSON.parse(raw7) : {};
+    }catch(e){ customerContacts = {}; }
     $("shopNameDisplay").textContent = shopName;
     $("shopNameInput").value = shopName;
     renderItems();
@@ -962,6 +997,44 @@
   function ledgerBalance(name){
     const entries = ledger[name] || [];
     return entries.reduce((s,e)=> s + (e.type==="credit" ? e.amount : -e.amount), 0);
+  }
+
+  // ---- Customer contacts: phone number + last-reminded date, used for
+  // the weekly balance-reminder feature (see "Reminders due" in the
+  // Ledger screen). Nothing here sends anything by itself — it just
+  // tracks who's due, so the shopkeeper can send with one tap.
+  function saveCustomerContacts(){
+    try{ localStorage.setItem(STORAGE_KEY_CUSTOMER_CONTACTS, JSON.stringify(customerContacts)); }catch(e){}
+  }
+  function setCustomerPhone(name, phone){
+    if(!name) return;
+    phone = (phone || "").trim();
+    if(!customerContacts[name]) customerContacts[name] = {};
+    if(phone) customerContacts[name].phone = phone;
+    saveCustomerContacts();
+  }
+  function getCustomerPhone(name){
+    return (customerContacts[name] && customerContacts[name].phone) || "";
+  }
+  function markCustomerReminded(name){
+    if(!customerContacts[name]) customerContacts[name] = {};
+    customerContacts[name].lastReminded = Date.now();
+    saveCustomerContacts();
+  }
+  function daysSinceReminded(name){
+    const ts = customerContacts[name] && customerContacts[name].lastReminded;
+    if(!ts) return Infinity;
+    return (Date.now() - ts) / (24*60*60*1000);
+  }
+  // Assumes a plain 10-digit Indian mobile number if no country code is
+  // already present — adjust here if shop owners are outside India.
+  function formatPhoneForWhatsApp(phone){
+    const digits = String(phone).replace(/\D/g, "");
+    if(digits.length === 10) return "91" + digits;
+    return digits;
+  }
+  function buildReminderMessage(name, balance){
+    return "வணக்கம் " + name + ",\n" + shopName + "-ல் உங்கள் நிலுவை தொகை ரூபாய் " + balance.toFixed(0) + ".\nவிரைவில் செலுத்தி உதவவும். நன்றி!";
   }
 
   // ---- Stock ledger: tracks every stock movement (restock purchases,
@@ -1033,7 +1106,56 @@
     return lowStockNames;
   }
 
+  // Lists customers who: have an outstanding balance, have a phone number
+  // saved, and haven't been reminded in the last 7 days (or ever). Each
+  // row has one-tap WhatsApp/SMS buttons — tapping opens that app with
+  // the message already typed, and marks them as reminded today so they
+  // won't reappear here until 7 more days pass.
+  function renderReminders(){
+    const section = $("reminderSection");
+    const listEl = $("reminderList");
+    const due = Object.keys(ledger)
+      .filter(n => ledgerBalance(n) > 0.001)
+      .filter(n => getCustomerPhone(n))
+      .filter(n => daysSinceReminded(n) >= 7);
+    if(due.length === 0){
+      section.style.display = "none";
+      return;
+    }
+    section.style.display = "block";
+    listEl.innerHTML = due.map(name => {
+      const bal = ledgerBalance(name);
+      const phone = getCustomerPhone(name);
+      return `<div class="reminder-row">
+        <div class="r-top">
+          <div class="r-name">${escapeHtml(name)}<span class="meta">${escapeHtml(phone)}</span></div>
+          <div class="r-amt">₹${bal.toFixed(0)}</div>
+        </div>
+        <div class="r-actions">
+          <button class="reminder-btn wa" data-name="${escapeHtml(name)}" data-mode="wa">💬 WhatsApp</button>
+          <button class="reminder-btn sms" data-name="${escapeHtml(name)}" data-mode="sms">✉️ SMS</button>
+        </div>
+      </div>`;
+    }).join("");
+    listEl.querySelectorAll(".reminder-btn").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const name = btn.dataset.name;
+        const bal = ledgerBalance(name);
+        const phone = getCustomerPhone(name);
+        const msg = buildReminderMessage(name, bal);
+        if(btn.dataset.mode === "wa"){
+          window.open("https://wa.me/" + formatPhoneForWhatsApp(phone) + "?text=" + encodeURIComponent(msg), "_blank");
+        } else {
+          window.location.href = "sms:" + phone + "?body=" + encodeURIComponent(msg);
+        }
+        markCustomerReminded(name);
+        renderReminders();
+      });
+    });
+  }
+
   function renderLedger(){
+    renderReminders();
     const listEl = $("ledgerList");
     const names = Object.keys(ledger).filter(n => ledgerBalance(n) > 0.001);
     names.sort((a,b)=> ledgerBalance(b) - ledgerBalance(a));
@@ -1138,10 +1260,25 @@
     $("ledgerDetailOverlay").classList.add("show");
   }
 
+  function renderLedgerDetailPhone(name){
+    const phone = getCustomerPhone(name);
+    const el = $("ledgerDetailPhone");
+    el.innerHTML = phone
+      ? "📞 " + escapeHtml(phone) + ' <a href="javascript:void(0)" id="editPhoneLink" style="color:var(--gold);text-decoration:underline;">திருத்த</a>'
+      : '<a href="javascript:void(0)" id="editPhoneLink" style="color:var(--gold);text-decoration:underline;">📞 மொபைல் நம்பர் சேர்க்க (நினைவூட்டலுக்கு)</a>';
+    $("editPhoneLink").addEventListener("click", ()=>{
+      const input = prompt("மொபைல் நம்பர் — " + name, phone || "");
+      if(input === null) return;
+      setCustomerPhone(name, input.trim());
+      renderLedgerDetailPhone(name);
+    });
+  }
+
   function renderLedgerDetail(name){
     $("ledgerDetailTitle").childNodes[0].textContent = name + " ";
     const bal = ledgerBalance(name);
     $("ledgerDetailBalance").innerHTML = 'தற்போதைய நிலுவை: <span style="color:' + (bal>0 ? "var(--danger)" : "var(--ok)") + ';font-weight:800;font-size:20px;">₹' + bal.toFixed(0) + '</span>';
+    renderLedgerDetailPhone(name);
     const entries = getLedgerEntriesSorted(name);
     const listEl = $("ledgerDetailList");
     if(entries.length === 0){
@@ -1529,7 +1666,7 @@
         btn.addEventListener("click", () => removeBillRow(parseInt(btn.dataset.idx)));
       });
     }
-    const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
+    const total = computeBillTotal(bill);
     $("totalAmt").textContent = total.toFixed(0);
     const totalQty = bill.reduce((s,b)=>s+b.qty,0);
     $("itemCountLine").textContent = bill.length === 0
@@ -1539,6 +1676,18 @@
 
   function formatQty(q){
     return (q % 1 === 0) ? String(q) : String(q);
+  }
+
+  // A bill total like ₹392.5 (from fractional quantities such as 0.2kg or
+  // 0.25kg) was being rounded separately wherever it was displayed —
+  // once for the total line, again for the balance line — and those two
+  // roundings didn't always agree, showing a balance off by ₹1 from what
+  // the displayed total would imply. Rounding ONCE here, and using this
+  // everywhere instead of each place doing its own bill.reduce(...) +
+  // toFixed(0), guarantees every screen agrees with the same number.
+  function computeBillTotal(billArr){
+    const raw = billArr.reduce((s,b)=>s+b.price*b.qty,0);
+    return Math.round(raw);
   }
 
   const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -2034,7 +2183,7 @@
   });
 
   function openReviewSheet(){
-    const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
+    const total = computeBillTotal(bill);
     const body = $("reviewTableBody");
     body.innerHTML = bill.map(b => `
       <tr>
@@ -2065,7 +2214,7 @@
   });
 
   function renderVoiceConfirmTable(){
-    const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
+    const total = computeBillTotal(bill);
     const body = $("voiceConfirmTableBody");
     body.innerHTML = bill.map(b => `
       <tr>
@@ -2079,7 +2228,7 @@
   }
 
   function speakFullBillForConfirmation(){
-    const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
+    const total = computeBillTotal(bill);
     const itemList = bill.map(b => b.name + " " + formatQty(b.qty)).join(", ");
     const fullSpeech = "பில்லில் உள்ள பொருட்கள்: " + itemList + ". மொத்தம் " + bill.length + " வகை பொருட்கள். மொத்த தொகை ரூபாய் " + total.toFixed(0) + ". சரி என்றால் உறுதிப்படுத்தவும்.";
     setStatus("உறுதிப்படுத்தவும்: " + itemList + " — மொத்தம் ₹" + total.toFixed(0));
@@ -2108,7 +2257,7 @@
   });
 
   function openPaymentSheet(){
-    const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
+    const total = computeBillTotal(bill);
     payMethod = null;
 
     // If this bill is being edited (loaded via History 🔁), look up what
@@ -2211,7 +2360,7 @@
     const collectRow = $("cashCollectRow");
     const label = $("cashReceivedLabel");
     if(editOriginalBill){
-      const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
+      const total = computeBillTotal(bill);
       const diff = total - editOriginalBill.total;
       if(diff <= 0){
         collectRow.style.display = "none";
@@ -2234,7 +2383,7 @@
 
   function handlePaymentTranscript(transcript){
     const amt = extractAmountFromTranscript(transcript);
-    const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
+    const total = computeBillTotal(bill);
     if(amt === null || amt <= 0){
       setStatus('தொகை புரியவில்லை. மீண்டும் சொல்லுங்கள் அல்லது தட்டச்சு செய்யவும்.');
       speak("தொகை புரியவில்லை, மீண்டும் சொல்லுங்கள்");
@@ -2312,6 +2461,7 @@
     $("creditExistingCustomerBtn").classList.remove("active");
     $("creditNewCustomerSection").style.display = "block";
     $("creditExistingCustomerSection").style.display = "none";
+    $("creditCustomerPhone").value = "";
     updateCreditConfirmState();
   });
 
@@ -2329,6 +2479,7 @@
     $("creditNewCustomerSection").style.display = "block";
     $("creditExistingCustomerSection").style.display = "none";
     $("creditCustomerName").value = "";
+    $("creditCustomerPhone").value = "";
     updateCreditConfirmState();
   });
 
@@ -2367,6 +2518,7 @@
     container.querySelectorAll(".customer-search-row").forEach(row => {
       row.addEventListener("click", () => {
         $("creditCustomerName").value = row.dataset.name;
+        $("creditCustomerPhone").value = getCustomerPhone(row.dataset.name);
         renderCustomerSearchResults($("creditCustomerSearch").value);
         updateCreditConfirmState();
       });
@@ -2380,7 +2532,7 @@
   $("cashReceived").addEventListener("input", updateBalanceDisplay);
 
   function updateBalanceDisplay(){
-    const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
+    const total = computeBillTotal(bill);
     const panel = $("balancePanel");
     const amtEl = $("balanceAmount");
 
@@ -2450,7 +2602,7 @@
   }
 
   $("confirmPayBtn").addEventListener("click", async () => {
-    const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
+    const total = computeBillTotal(bill);
     let received = total, balance = 0, customerName = null, speechBalance = null;
     if(payMethod === "cash"){
       if(editOriginalBill){
@@ -2476,6 +2628,8 @@
       customerName = $("creditCustomerName").value.trim();
       if(!customerName) return;
       received = 0; balance = 0;
+      const phoneEntered = $("creditCustomerPhone").value.trim();
+      if(phoneEntered) setCustomerPhone(customerName, phoneEntered);
     } else {
       return;
     }
@@ -3362,7 +3516,7 @@
   function putCurrentBillOnStandby(){
     if(bill.length === 0) return false;
     editingBillRef = null;
-    const total = bill.reduce((s,b)=>s+b.price*b.qty,0);
+    const total = computeBillTotal(bill);
     const time = new Date().toLocaleTimeString("ta-IN",{hour:'2-digit',minute:'2-digit'});
     standbyBills.push({
       id: Date.now().toString(),
