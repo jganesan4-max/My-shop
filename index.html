@@ -535,7 +535,7 @@
     <div id="reminderSection" style="display:none;">
       <div class="field-label" style="margin-top:0;">🔔 நினைவூட்டல் அனுப்ப வேண்டியவர்கள்</div>
       <div id="reminderList"></div>
-      <div class="divider-note" style="margin-top:6px;">💡 இது தானாக அனுப்பாது — WhatsApp/SMS தட்டினால் தொகை ஏற்கனவே தட்டச்சு செய்யப்பட்டு திறக்கும், நீங்கள் "Send" தட்ட வேண்டும். கடைசியாக அனுப்பிய 7 நாட்களுக்குப் பிறகு மீண்டும் இங்கு காட்டப்படும்.</div>
+      <div class="divider-note" style="margin-top:6px;">💡 இது தானாக அனுப்பாது — WhatsApp/SMS தட்டினால் தொகை ஏற்கனவே தட்டச்சு செய்யப்பட்டு திறக்கும், நீங்கள் "Send" தட்ட வேண்டும். கடைசியாக அனுப்பிய 15 நாட்களுக்குப் பிறகு மீண்டும் இங்கு காட்டப்படும்.</div>
       <div class="pr-line" style="border-top:2px dashed rgba(245,241,227,0.2);margin:16px 0;"></div>
     </div>
     <div id="ledgerList"></div>
@@ -887,7 +887,7 @@
   let standbyBills = [];
   let ledger = {}; // { customerName: [ {type:'credit'|'payment', amount, date, time, billNo} ] }
   // { customerName: { phone: "9876543210", lastReminded: <ms timestamp> } }
-  // Used for the weekly balance-reminder feature — WhatsApp/SMS can't be
+  // Used for the balance-reminder feature — WhatsApp/SMS can't be
   // sent silently from a webpage, so this tracks who's "due" for a
   // one-tap reminder rather than actually auto-sending anything.
   let customerContacts = {};
@@ -1000,7 +1000,7 @@
   }
 
   // ---- Customer contacts: phone number + last-reminded date, used for
-  // the weekly balance-reminder feature (see "Reminders due" in the
+  // the balance-reminder feature (see "Reminders due" in the
   // Ledger screen). Nothing here sends anything by itself — it just
   // tracks who's due, so the shopkeeper can send with one tap.
   function saveCustomerContacts(){
@@ -1034,7 +1034,7 @@
     return digits;
   }
   function buildReminderMessage(name, balance){
-    return "வணக்கம் " + name + ",\n" + shopName + "-ல் உங்கள் நிலுவை தொகை ரூபாய் " + balance.toFixed(0) + ".\nவிரைவில் செலுத்தி உதவவும். நன்றி!";
+    return "வணக்கம் " + name + ",\n" + shopName + "-ல் உங்கள் நிலுவை தொகை ரூபாய் " + balance.toFixed(0) + ".\nஇது உங்கள் கவனத்திற்கு. நன்றி!";
   }
 
   // ---- Stock ledger: tracks every stock movement (restock purchases,
@@ -1117,7 +1117,7 @@
     const due = Object.keys(ledger)
       .filter(n => ledgerBalance(n) > 0.001)
       .filter(n => getCustomerPhone(n))
-      .filter(n => daysSinceReminded(n) >= 7);
+      .filter(n => daysSinceReminded(n) >= 15);
     if(due.length === 0){
       section.style.display = "none";
       return;
@@ -1678,16 +1678,16 @@
     return (q % 1 === 0) ? String(q) : String(q);
   }
 
-  // A bill total like ₹392.5 (from fractional quantities such as 0.2kg or
-  // 0.25kg) was being rounded separately wherever it was displayed —
-  // once for the total line, again for the balance line — and those two
-  // roundings didn't always agree, showing a balance off by ₹1 from what
-  // the displayed total would imply. Rounding ONCE here, and using this
-  // everywhere instead of each place doing its own bill.reduce(...) +
-  // toFixed(0), guarantees every screen agrees with the same number.
+  // Each line on a receipt is DISPLAYED rounded to a whole rupee (e.g.
+  // ₹62.50 shows as ₹63). If the total were computed from the PRECISE
+  // unrounded values instead, someone manually adding up what they see
+  // on the receipt could get a different number than the printed total
+  // — which looks like a mistake, even though the unrounded math is
+  // technically more "exact". So each line is rounded FIRST (matching
+  // what's printed), and the total is the sum of those rounded lines —
+  // guaranteeing the receipt always adds up exactly as printed.
   function computeBillTotal(billArr){
-    const raw = billArr.reduce((s,b)=>s+b.price*b.qty,0);
-    return Math.round(raw);
+    return billArr.reduce((s,b) => s + Math.round(b.price * b.qty), 0);
   }
 
   const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -2022,6 +2022,22 @@
   function confirmQtyAndAdd(qty){
     if(!qtyPickerCurrentItem || isNaN(qty) || qty <= 0) return;
     const item = qtyPickerCurrentItem;
+
+    // Stock check: applies to both plain catalog items and variants,
+    // since both carry the BASE item's id. Custom/ad-hoc items (id=null)
+    // aren't stock-tracked, so nothing to check there.
+    if(item.id){
+      const catalogItem = items.find(i => i.id === item.id);
+      if(catalogItem && typeof catalogItem.stock === "number"){
+        const alreadyInBill = bill.filter(b => b.itemId === item.id).reduce((s,b)=>s+b.qty,0);
+        const remaining = catalogItem.stock - alreadyInBill;
+        if(remaining <= 0){
+          const ok = confirm(catalogItem.name + " — இருப்பு இல்லை (தற்போதைய இருப்பு: " + formatStock(catalogItem.stock) + "). தொடர்ந்து சேர்க்கவா?");
+          if(!ok) return;
+        }
+      }
+    }
+
     if(item.isVariant){
       addVariantToBill(item.id, item.name, item.price, qty);
     } else if(item.id){
