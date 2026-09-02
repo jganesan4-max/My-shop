@@ -355,12 +355,35 @@
   @media print{
     body *{visibility:hidden;}
     #printArea, #printArea *{visibility:visible;}
-    #printArea{display:block !important;position:absolute;top:0;left:0;width:100%;padding:10px;color:#000;background:#fff;font-family:'Noto Sans Tamil',sans-serif;}
-    #printArea h2{margin:0 0 4px;font-size:18px;text-align:center;}
-    #printArea .pr-line{border-top:1px dashed #000;margin:6px 0;}
-    #printArea table{width:100%;border-collapse:collapse;font-size:13px;}
-    #printArea td{padding:3px 0;}
-    #printArea .pr-total{font-weight:bold;font-size:15px;}
+    #printArea{
+      display:block !important;position:absolute;top:0;left:0;width:100%;padding:0;
+      color:#000;background:#fff;font-family:'Noto Sans Tamil',sans-serif;
+      -webkit-print-color-adjust:exact;print-color-adjust:exact;
+    }
+    #printArea .pr-banner{
+      background:#1e3d2e;color:#fff;text-align:center;padding:12px 8px;margin-bottom:8px;
+      -webkit-print-color-adjust:exact;print-color-adjust:exact;
+    }
+    #printArea .pr-banner .pr-shopname{font-family:'Baloo Thambi 2',sans-serif;font-size:21px;font-weight:800;letter-spacing:0.3px;}
+    #printArea .pr-banner .pr-phone{font-size:12.5px;margin-top:3px;}
+    #printArea .pr-body{padding:0 12px;}
+    #printArea .pr-meta{text-align:center;font-size:12px;color:#444;margin-bottom:8px;}
+    #printArea .pr-line{border-top:1px dashed #999;margin:8px 0;}
+    #printArea table.pr-items{width:100%;border-collapse:collapse;font-size:13.5px;}
+    #printArea table.pr-items thead th{
+      text-align:left;font-size:11px;color:#555;text-transform:uppercase;letter-spacing:0.3px;
+      border-bottom:1.5px solid #333;padding:4px 3px;
+    }
+    #printArea table.pr-items th.num, #printArea table.pr-items td.num{text-align:right;}
+    #printArea table.pr-items td{padding:6px 3px;border-bottom:1px dashed #ccc;}
+    #printArea .pr-total-row{
+      display:flex;justify-content:space-between;align-items:center;
+      margin-top:6px;padding-top:8px;border-top:2px solid #000;
+    }
+    #printArea .pr-total-row .lbl{font-size:14px;color:#333;}
+    #printArea .pr-total-row .amt{font-family:'Baloo Thambi 2',sans-serif;font-weight:800;font-size:19px;}
+    #printArea .pr-pay-info{font-size:12.5px;margin-top:10px;text-align:center;color:#333;}
+    #printArea .pr-footer{text-align:center;font-size:12.5px;margin-top:14px;color:#555;padding-bottom:8px;}
   }
 
   .lock-overlay{
@@ -452,6 +475,9 @@
 
     <div class="field-label">கடை பெயர்</div>
     <input type="text" id="shopNameInput" placeholder="என் கடை">
+
+    <div class="field-label">கடை மொபைல் நம்பர் (பில்-ல் காட்ட)</div>
+    <input type="text" id="shopPhoneInput" placeholder="எ.கா. 9876543210" inputmode="tel" maxlength="15">
 
     <div class="field-label">புதிய பொருள் பெயர்</div>
     <div class="field-row">
@@ -797,6 +823,7 @@
 (function(){
   const STORAGE_KEY_ITEMS = "kadai:items";
   const STORAGE_KEY_SHOPNAME = "kadai:shopname";
+  const STORAGE_KEY_SHOPPHONE = "kadai:shopphone";
   const STORAGE_KEY_STANDBY = "kadai:standby";
   const STORAGE_KEY_CURRENTBILL = "kadai:currentbill";
   const STORAGE_KEY_LEDGER = "kadai:ledger";
@@ -897,6 +924,7 @@
   // units than before.
   let stockLedger = {};
   let shopName = "என் கடை";
+  let shopPhone = "";
   let recognition = null;
   let listeningTarget = null;
 
@@ -926,6 +954,9 @@
       shopName = raw2 || "என் கடை";
     }catch(e){ shopName = "என் கடை"; }
     try{
+      shopPhone = localStorage.getItem(STORAGE_KEY_SHOPPHONE) || "";
+    }catch(e){ shopPhone = ""; }
+    try{
       const raw3 = localStorage.getItem(STORAGE_KEY_STANDBY);
       standbyBills = raw3 ? JSON.parse(raw3) : [];
     }catch(e){ standbyBills = []; }
@@ -950,6 +981,7 @@
     }catch(e){ customerContacts = {}; }
     $("shopNameDisplay").textContent = shopName;
     $("shopNameInput").value = shopName;
+    $("shopPhoneInput").value = shopPhone;
     renderItems();
     updateStandbyBadge();
     updateLedgerBadge();
@@ -960,6 +992,9 @@
   }
   async function saveShopName(){
     try{ localStorage.setItem(STORAGE_KEY_SHOPNAME, shopName); }catch(e){}
+  }
+  async function saveShopPhone(){
+    try{ localStorage.setItem(STORAGE_KEY_SHOPPHONE, shopPhone); }catch(e){}
   }
   function saveCurrentBill(){
     try{ localStorage.setItem(STORAGE_KEY_CURRENTBILL, JSON.stringify(bill)); }catch(e){}
@@ -1317,17 +1352,21 @@
   function printLedgerDetail(name){
     const bal = ledgerBalance(name);
     const entries = getLedgerEntriesSorted(name);
-    let html = `<h2>${escapeHtml(shopName)}</h2>`;
-    html += `<div style="text-align:center;font-size:12px;">கடன் கணக்கு — ${escapeHtml(name)}</div>`;
-    html += `<div class="pr-line"></div><table>`;
+    let html = `<div class="pr-banner">
+      <div class="pr-shopname">${escapeHtml(shopName)}</div>
+      ${shopPhone ? `<div class="pr-phone">📞 ${escapeHtml(shopPhone)}</div>` : ``}
+    </div>`;
+    html += `<div class="pr-body">`;
+    html += `<div class="pr-meta">கடன் கணக்கு — ${escapeHtml(name)}</div>`;
+    html += `<table style="width:100%;border-collapse:collapse;font-size:13px;">`;
     entries.forEach(e => {
       const label = e.type === "credit" ? ("பில்" + (e.billNo ? " #"+e.billNo : "")) : "பணம் பெற்றது";
       const sign = e.type === "credit" ? "+" : "-";
-      html += `<tr><td>${escapeHtml(e.date)} ${escapeHtml(e.time)} ${label}</td><td style="text-align:right;">${sign}₹${e.amount.toFixed(0)}</td></tr>`;
+      html += `<tr><td style="padding:5px 2px;border-bottom:1px dashed #ccc;">${escapeHtml(e.date)} ${escapeHtml(e.time)} ${label}</td><td style="text-align:right;padding:5px 2px;border-bottom:1px dashed #ccc;">${sign}₹${e.amount.toFixed(0)}</td></tr>`;
     });
-    html += `</table><div class="pr-line"></div>`;
-    html += `<table><tr class="pr-total"><td>நிலுவை</td><td style="text-align:right;">₹${bal.toFixed(0)}</td></tr></table>`;
-    html += `<div class="pr-line"></div><div style="text-align:center;font-size:12px;">நன்றி! Thank you</div>`;
+    html += `</table>`;
+    html += `<div class="pr-total-row"><span class="lbl">நிலுவை</span><span class="amt">₹${bal.toFixed(0)}</span></div>`;
+    html += `<div class="pr-footer">நன்றி! Thank you 🙏</div></div>`;
     $("printArea").innerHTML = html;
     window.print();
   }
@@ -2791,20 +2830,27 @@
   });
 
   function printReceipt(receipt){
-    const methodLabel = receipt.method === "cash" ? "Cash" : "Bank / UPI";
-    let html = `<h2>${escapeHtml(shopName)}</h2>`;
-    html += `<div style="text-align:center;font-size:12px;">பில் எண் ${receipt.billNo} • ${new Date().toLocaleDateString("ta-IN")} ${receipt.time}</div>`;
-    html += `<div class="pr-line"></div><table>`;
+    const methodLabel = receipt.method === "cash" ? "பணம் (Cash)" : (receipt.method === "bank" ? "வங்கி / UPI" : "கடன் (Credit)");
+    let html = `<div class="pr-banner">
+      <div class="pr-shopname">${escapeHtml(shopName)}</div>
+      ${shopPhone ? `<div class="pr-phone">📞 ${escapeHtml(shopPhone)}</div>` : ``}
+    </div>`;
+    html += `<div class="pr-body">`;
+    html += `<div class="pr-meta">பில் எண் ${receipt.billNo} • ${new Date().toLocaleDateString("ta-IN")} ${receipt.time}</div>`;
+    html += `<table class="pr-items"><thead><tr><th>பொருள்</th><th class="num">எண்</th><th class="num">தொகை</th></tr></thead><tbody>`;
     receipt.items.forEach(it => {
-      html += `<tr><td>${escapeHtml(it.name)} x${formatQty(it.qty)}</td><td style="text-align:right;">₹${(it.price*it.qty).toFixed(0)}</td></tr>`;
+      html += `<tr><td>${escapeHtml(it.name)}</td><td class="num">${formatQty(it.qty)}</td><td class="num">₹${(it.price*it.qty).toFixed(0)}</td></tr>`;
     });
-    html += `</table><div class="pr-line"></div>`;
-    html += `<table><tr class="pr-total"><td>மொத்தம்</td><td style="text-align:right;">₹${receipt.total.toFixed(0)}</td></tr></table>`;
-    html += `<div style="font-size:12px;margin-top:6px;">${methodLabel}`;
+    html += `</tbody></table>`;
+    html += `<div class="pr-total-row"><span class="lbl">மொத்தம்</span><span class="amt">₹${receipt.total.toFixed(0)}</span></div>`;
+    html += `<div class="pr-pay-info">${methodLabel}`;
     if(receipt.method === "cash"){
       html += ` • பெற்றது ₹${receipt.received.toFixed(0)} • ${receipt.balance>=0?"மீதம்":"தேவை"} ₹${Math.abs(receipt.balance).toFixed(0)}`;
+    } else if(receipt.method === "credit" && receipt.customerName){
+      html += ` • ${escapeHtml(receipt.customerName)}`;
     }
-    html += `</div><div class="pr-line"></div><div style="text-align:center;font-size:12px;">நன்றி! Thank you</div>`;
+    html += `</div>`;
+    html += `<div class="pr-footer">நன்றி! Thank you 🙏</div></div>`;
     $("printArea").innerHTML = html;
     window.print();
   }
@@ -2813,6 +2859,7 @@
     const methodLabel = receipt.method === "cash" ? "Cash" : "Bank / UPI";
     let lines = [];
     lines.push(shopName);
+    if(shopPhone) lines.push("📞 " + shopPhone);
     lines.push("பில் எண் #" + receipt.billNo + " - " + receipt.time);
     lines.push("-----------------------------");
     receipt.items.forEach(it => {
@@ -3140,6 +3187,8 @@
     shopName = $("shopNameInput").value.trim() || "என் கடை";
     $("shopNameDisplay").textContent = shopName;
     await saveShopName();
+    shopPhone = $("shopPhoneInput").value.trim();
+    await saveShopPhone();
     deviceName = $("deviceNameInput").value.trim();
     try{ localStorage.setItem(STORAGE_KEY_DEVICENAME, deviceName); }catch(e){}
     syncCode = $("syncCodeInput").value.trim();
@@ -3159,6 +3208,10 @@
   $("syncCodeInput").addEventListener("change", () => {
     syncCode = $("syncCodeInput").value.trim();
     try{ localStorage.setItem(STORAGE_KEY_SYNCCODE, syncCode); }catch(e){}
+  });
+  $("shopPhoneInput").addEventListener("change", () => {
+    shopPhone = $("shopPhoneInput").value.trim();
+    saveShopPhone();
   });
   $("deviceNameInput").addEventListener("change", () => {
     deviceName = $("deviceNameInput").value.trim();
