@@ -420,6 +420,7 @@
       <div class="header-btns">
         <button class="install-btn" id="installBtn">📲 Home Screen</button>
         <a class="icon-btn" href="manual.html" target="_blank" title="பயனர் கையேடு" style="text-decoration:none;display:flex;align-items:center;justify-content:center;">📖</a>
+        <button class="icon-btn btn-standby" id="purchaseBillBtn" title="கொள்முதல் பில் (Purchase Bill)">📦<span class="standby-badge" id="purchaseBillBadge" style="display:none;">0</span></button>
         <button class="icon-btn" id="settingsBtn" title="பொருட்கள்">⚙️</button>
       </div>
     </div>
@@ -618,6 +619,120 @@
     <div class="divider-note" id="ledgerPayRemainingPreview"></div>
     <button class="save-btn" id="ledgerPayConfirmBtn">சேர்</button>
     <button class="btn btn-history" id="ledgerPayCancelBtn" style="width:100%;margin-top:10px;">✕ ரத்து செய்</button>
+  </div>
+</div>
+
+<!-- Purchase Bill list sheet: every supplier/trader invoice the shop has
+     entered (Ramesh Traders style: invoice no, date, stock name/qty/rate,
+     bill total, cash/UPI/credit, paid amount + date, balance to pay). -->
+<div class="overlay" id="purchaseBillOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">📦 கொள்முதல் பில்கள் (Purchase Bills) <button class="icon-btn" id="closePurchaseBill">✕</button></div>
+    <button class="save-btn" id="newPurchaseBillBtn" style="margin-top:0;">+ புதிய கொள்முதல் பில்</button>
+    <div class="history-day-total" id="purchaseBillTotalDue" style="margin-top:14px;"></div>
+    <div id="purchaseBillList" style="margin-top:6px;"></div>
+    <div class="divider-note">💡 உங்கள் கடைக்கு பொருள் வாங்கும்போது (எ.கா. ராமேஷ் ட்ரேடர்ஸ்) கிடைக்கும் Invoice-ஐ இங்கு பதிவு செய்து, செலுத்திய தொகை/மீதி நிலுவையை கண்காணிக்கலாம்.</div>
+  </div>
+</div>
+
+<!-- Purchase Bill add/edit form -->
+<div class="overlay" id="purchaseBillFormOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title" id="pbFormTitle">புதிய கொள்முதல் பில் <button class="icon-btn" id="closePurchaseBillForm">✕</button></div>
+
+    <div class="field-label" style="margin-top:0;">வியாபாரி / Trader பெயர்</div>
+    <input type="text" id="pbTraderName" placeholder="எ.கா. ராமேஷ் ட்ரேடர்ஸ்">
+
+    <div class="field-row" style="margin-top:8px;">
+      <div style="flex:1;">
+        <div class="field-label" style="margin-top:0;">Invoice No</div>
+        <input type="text" id="pbInvoiceNo" placeholder="எ.கா. INV-102">
+      </div>
+      <div style="flex:1;">
+        <div class="field-label" style="margin-top:0;">தேதி</div>
+        <input type="date" id="pbDate">
+      </div>
+    </div>
+
+    <div class="field-label" style="margin-top:18px;display:flex;justify-content:space-between;align-items:center;">
+      <span>பொருட்கள் (Stock, Qty, Rate)</span>
+    </div>
+    <div id="pbItemsList"></div>
+    <button class="btn btn-history" id="pbAddItemRowBtn" style="width:100%;margin-top:8px;">+ பொருள் வரிசை சேர்</button>
+
+    <div class="review-total-row" style="margin-top:16px;">
+      <span class="lbl">பில் மொத்தம் (Items கூட்டல்)</span>
+      <span class="amt">₹<span id="pbComputedTotal">0</span></span>
+    </div>
+    <div class="field-label">பில் மொத்தம் (தேவைப்பட்டால் மட்டும் திருத்தவும்)</div>
+    <input type="number" id="pbBillTotalOverride" inputmode="decimal">
+
+    <div class="field-label" style="margin-top:18px;">💳 பணம் செலுத்தல் முறை</div>
+    <div class="pay-method-row">
+      <button type="button" class="pay-method-btn" data-method="cash" id="pbMethodCash"><span class="emoji">💵</span>Cash</button>
+      <button type="button" class="pay-method-btn" data-method="upi" id="pbMethodUpi"><span class="emoji">📱</span>UPI</button>
+      <button type="button" class="pay-method-btn" data-method="credit" id="pbMethodCredit"><span class="emoji">📒</span>பின்னால் (Credit)</button>
+    </div>
+
+    <div class="field-label">இப்போது செலுத்திய தொகை (₹) — முழுவதும்/பாதி/0</div>
+    <input type="number" id="pbPaidAmount" inputmode="decimal" value="0">
+    <div class="field-label">செலுத்திய தேதி</div>
+    <input type="date" id="pbPaidDate">
+
+    <div class="balance-panel">
+      <div class="balance-label">செலுத்த வேண்டிய நிலுவை (Balance)</div>
+      <div class="balance-amount" id="pbBalancePreview">₹0</div>
+    </div>
+
+    <button class="save-btn" id="pbSaveBtn" style="margin-top:16px;">💾 பில் சேமி</button>
+    <button class="btn btn-history" id="pbFormDeleteBtn" style="width:100%;margin-top:10px;display:none;color:var(--danger);">🗑️ இந்த பில்-ஐ நீக்கு</button>
+  </div>
+</div>
+
+<!-- Purchase Bill detail view -->
+<div class="overlay" id="purchaseBillDetailOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">பில் விவரம் <button class="icon-btn" id="closePurchaseBillDetail">✕</button></div>
+    <div class="divider-note" id="pbDetailMeta" style="margin-top:0;"></div>
+    <table class="review-table">
+      <thead>
+        <tr><th>பொருள்</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">தொகை</th></tr>
+      </thead>
+      <tbody id="pbDetailItemsBody"></tbody>
+    </table>
+    <div class="review-total-row">
+      <span class="lbl">பில் மொத்தம்</span>
+      <span class="amt">₹<span id="pbDetailTotal">0</span></span>
+    </div>
+    <div class="field-label" style="margin-top:14px;">செலுத்திய பணம்</div>
+    <div id="pbDetailPaymentsList"></div>
+    <div class="balance-panel">
+      <div class="balance-label">நிலுவை (Balance)</div>
+      <div class="balance-amount" id="pbDetailBalance">₹0</div>
+    </div>
+    <button class="save-btn" id="pbDetailAddPaymentBtn" style="margin-top:14px;">➕ பணம் செலுத்தியது சேர்</button>
+    <div style="display:flex;gap:10px;margin-top:10px;">
+      <button class="btn btn-history" id="pbDetailEditBtn" style="flex:1;">✏️ திருத்த</button>
+      <button class="btn btn-history" id="pbDetailDeleteBtn" style="flex:1;color:var(--danger);">🗑️ நீக்கு</button>
+    </div>
+  </div>
+</div>
+
+<!-- Purchase Bill: record an additional payment towards balance -->
+<div class="overlay" id="pbPayOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">பணம் செலுத்தியது சேர்</div>
+    <div class="divider-note" style="margin-top:0;" id="pbPayCurrentBalance"></div>
+    <div class="field-label">தொகை (₹)</div>
+    <input type="number" id="pbPayAmount" inputmode="decimal">
+    <div class="field-label">தேதி</div>
+    <input type="date" id="pbPayDate">
+    <button class="save-btn" id="pbPayConfirmBtn">சேர்</button>
+    <button class="btn btn-history" id="pbPayCancelBtn" style="width:100%;margin-top:10px;">✕ ரத்து செய்</button>
   </div>
 </div>
 
@@ -829,6 +944,7 @@
   const STORAGE_KEY_LEDGER = "kadai:ledger";
   const STORAGE_KEY_CUSTOMER_CONTACTS = "kadai:customercontacts";
   const STORAGE_KEY_STOCKLEDGER = "kadai:stockledger";
+  const STORAGE_KEY_PURCHASE_BILLS = "kadai:purchasebills";
   const todayKey = () => "kadai:sales:" + new Date().toISOString().slice(0,10);
   const todayDateOnly = () => new Date().toISOString().slice(0,10);
 
@@ -923,6 +1039,13 @@
   // bill; "return" = added back because an edited bill now needs fewer
   // units than before.
   let stockLedger = {};
+  // [{ id, traderName, invoiceNo, date, items:[{name,qty,rate,amount}],
+  //    billTotal, paymentMethod:'cash'|'upi'|'credit',
+  //    payments:[{amount,date}], createdAt }]
+  // Balance = billTotal - sum(payments.amount). Fully independent of the
+  // sales-side Ledger above — this tracks what the SHOP owes its own
+  // suppliers/traders, not what customers owe the shop.
+  let purchaseBills = [];
   let shopName = "என் கடை";
   let shopPhone = "";
   let recognition = null;
@@ -979,12 +1102,17 @@
       const raw7 = localStorage.getItem(STORAGE_KEY_CUSTOMER_CONTACTS);
       customerContacts = raw7 ? JSON.parse(raw7) : {};
     }catch(e){ customerContacts = {}; }
+    try{
+      const raw8 = localStorage.getItem(STORAGE_KEY_PURCHASE_BILLS);
+      purchaseBills = raw8 ? JSON.parse(raw8) : [];
+    }catch(e){ purchaseBills = []; }
     $("shopNameDisplay").textContent = shopName;
     $("shopNameInput").value = shopName;
     $("shopPhoneInput").value = shopPhone;
     renderItems();
     updateStandbyBadge();
     updateLedgerBadge();
+    updatePurchaseBillBadge();
   }
 
   async function saveItems(){
@@ -3035,6 +3163,7 @@
     renderExistingItems();
     updateStandbyBadge();
     updateLedgerBadge();
+    updatePurchaseBillBadge();
     return true;
   }
 
@@ -3653,6 +3782,321 @@
     speak("Standby பில் தொடரப்படுகிறது");
   }
 
+  // ---- Purchase Bills (கொள்முதல் பில்): supplier/trader invoices the shop
+  // owner enters when buying stock (e.g. ராமேஷ் ட்ரேடர்ஸ் — Invoice No,
+  // Date, Stock Name/Qty/Rate/Amount, Bill Total, Cash/UPI/Credit, Paid
+  // amount + date, Balance to pay). Independent of the sales-side Ledger.
+  function savePurchaseBills(){
+    try{ localStorage.setItem(STORAGE_KEY_PURCHASE_BILLS, JSON.stringify(purchaseBills)); }catch(e){}
+  }
+  function purchaseBillPaid(pb){
+    return (pb.payments || []).reduce((s,p) => s + (parseFloat(p.amount) || 0), 0);
+  }
+  function purchaseBillBalance(pb){
+    return Math.max(0, (parseFloat(pb.billTotal) || 0) - purchaseBillPaid(pb));
+  }
+  function updatePurchaseBillBadge(){
+    const badge = $("purchaseBillBadge");
+    if(!badge) return;
+    const dueCount = purchaseBills.filter(pb => purchaseBillBalance(pb) > 0.001).length;
+    if(dueCount > 0){
+      badge.style.display = "flex";
+      badge.textContent = dueCount;
+    } else {
+      badge.style.display = "none";
+    }
+  }
+  function paymentMethodLabel(m){
+    return m === "upi" ? "UPI" : (m === "credit" ? "Credit (பின்னால்)" : "Cash");
+  }
+
+  function renderPurchaseBillList(){
+    const listEl = $("purchaseBillList");
+    if(purchaseBills.length === 0){
+      listEl.innerHTML = '<div class="standby-empty">இன்னும் கொள்முதல் பில் எதுவும் பதிவு செய்யவில்லை</div>';
+      $("purchaseBillTotalDue").textContent = "";
+      return;
+    }
+    const sorted = purchaseBills.slice().sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+    listEl.innerHTML = sorted.map(pb => {
+      const bal = purchaseBillBalance(pb);
+      const statusText = bal <= 0.001 ? "✅ முழுவதும் செலுத்தப்பட்டது" : (purchaseBillPaid(pb) > 0 ? "🟡 பாதி செலுத்தப்பட்டது" : "🔴 செலுத்தப்படவில்லை");
+      return `<div class="ledger-row pb-row" data-id="${escapeHtml(pb.id)}" style="cursor:pointer;">
+        <div class="info">
+          <div>${escapeHtml(pb.traderName || "பெயர் இல்லை")} <span class="meta">Invoice: ${escapeHtml(pb.invoiceNo || "-")} · ${escapeHtml(pb.date || "")}</span></div>
+          <span class="meta">${statusText}</span>
+        </div>
+        <div style="text-align:right;">
+          <div class="amt" style="color:var(--gold);">₹${(parseFloat(pb.billTotal)||0).toFixed(0)}</div>
+          ${bal > 0.001 ? '<div class="meta" style="color:var(--danger);">நிலுவை ₹' + bal.toFixed(0) + '</div>' : ''}
+        </div>
+      </div>`;
+    }).join("");
+    const totalDue = purchaseBills.reduce((s,pb) => s + purchaseBillBalance(pb), 0);
+    $("purchaseBillTotalDue").textContent = totalDue > 0.001
+      ? "மொத்த நிலுவை (வியாபாரிகளுக்கு செலுத்த வேண்டியது): ₹" + totalDue.toFixed(0)
+      : "எல்லா கொள்முதல் பில்களும் செலுத்தப்பட்டுவிட்டன 🎉";
+    listEl.querySelectorAll(".pb-row").forEach(row => {
+      row.addEventListener("click", () => openPurchaseBillDetail(row.dataset.id));
+    });
+  }
+
+  $("purchaseBillBtn").addEventListener("click", () => {
+    renderPurchaseBillList();
+    $("purchaseBillOverlay").classList.add("show");
+  });
+  $("closePurchaseBill").addEventListener("click", () => {
+    $("purchaseBillOverlay").classList.remove("show");
+  });
+
+  // ---- Purchase Bill form (add / edit) ----
+  let pbEditingId = null;
+  let pbSelectedMethod = "cash";
+  let pbItemRowSeq = 0;
+
+  function pbItemRowHtml(idx, item){
+    item = item || {name:"", qty:"", rate:""};
+    return `<div class="pb-item-row" data-idx="${idx}" style="background:var(--board);border:1px solid rgba(245,241,227,0.15);border-radius:10px;padding:8px;margin-top:8px;">
+      <input type="text" class="pb-item-name" placeholder="பொருள் பெயர்" style="width:100%;margin-bottom:6px;" value="${escapeHtml(item.name)}">
+      <div class="field-row">
+        <input type="number" class="pb-item-qty" placeholder="Qty" inputmode="decimal" style="flex:1;" value="${item.qty !== undefined && item.qty !== "" ? item.qty : ""}">
+        <input type="number" class="pb-item-rate" placeholder="Rate ₹" inputmode="decimal" style="flex:1;" value="${item.rate !== undefined && item.rate !== "" ? item.rate : ""}">
+        <div class="pb-item-amt" style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--gold);font-weight:700;">₹0</div>
+        <button type="button" class="mini-btn del-btn pb-item-del" title="நீக்கு">🗑️</button>
+      </div>
+    </div>`;
+  }
+
+  function pbAddItemRow(item){
+    const wrap = document.createElement("div");
+    wrap.innerHTML = pbItemRowHtml(pbItemRowSeq++, item);
+    $("pbItemsList").appendChild(wrap.firstElementChild);
+    pbBindItemRowEvents();
+    pbRecomputeTotal();
+  }
+
+  function pbBindItemRowEvents(){
+    $("pbItemsList").querySelectorAll(".pb-item-row").forEach(row => {
+      if(row.dataset.bound) return;
+      row.dataset.bound = "1";
+      row.querySelectorAll(".pb-item-qty, .pb-item-rate").forEach(inp => {
+        inp.addEventListener("input", () => pbRecomputeTotal());
+      });
+      row.querySelector(".pb-item-del").addEventListener("click", () => {
+        row.remove();
+        pbRecomputeTotal();
+      });
+    });
+  }
+
+  function pbRecomputeTotal(){
+    let total = 0;
+    $("pbItemsList").querySelectorAll(".pb-item-row").forEach(row => {
+      const qty = parseFloat(row.querySelector(".pb-item-qty").value) || 0;
+      const rate = parseFloat(row.querySelector(".pb-item-rate").value) || 0;
+      const amt = qty * rate;
+      row.querySelector(".pb-item-amt").textContent = "₹" + amt.toFixed(2).replace(/\.00$/,"");
+      total += amt;
+    });
+    $("pbComputedTotal").textContent = total.toFixed(2).replace(/\.00$/,"");
+    if(!$("pbBillTotalOverride").dataset.userEdited){
+      $("pbBillTotalOverride").value = total ? total.toFixed(2).replace(/\.00$/,"") : "";
+    }
+    pbUpdateBalancePreview();
+  }
+
+  $("pbBillTotalOverride").addEventListener("input", () => {
+    $("pbBillTotalOverride").dataset.userEdited = "1";
+    pbUpdateBalancePreview();
+  });
+
+  function pbUpdateBalancePreview(){
+    const total = parseFloat($("pbBillTotalOverride").value) || 0;
+    const paid = parseFloat($("pbPaidAmount").value) || 0;
+    const bal = Math.max(0, total - paid);
+    $("pbBalancePreview").textContent = "₹" + bal.toFixed(0);
+  }
+  $("pbPaidAmount").addEventListener("input", pbUpdateBalancePreview);
+
+  function pbSelectMethod(method){
+    pbSelectedMethod = method;
+    ["cash","upi","credit"].forEach(m => {
+      $("pbMethod" + m.charAt(0).toUpperCase() + m.slice(1)).classList.toggle("active", m === method);
+    });
+  }
+  $("pbMethodCash").addEventListener("click", () => pbSelectMethod("cash"));
+  $("pbMethodUpi").addEventListener("click", () => pbSelectMethod("upi"));
+  $("pbMethodCredit").addEventListener("click", () => pbSelectMethod("credit"));
+
+  function openPurchaseBillForm(pb){
+    pbEditingId = pb ? pb.id : null;
+    $("pbFormTitle").textContent = pb ? "கொள்முதல் பில் திருத்த" : "புதிய கொள்முதல் பில்";
+    $("pbTraderName").value = pb ? (pb.traderName || "") : "";
+    $("pbInvoiceNo").value = pb ? (pb.invoiceNo || "") : "";
+    $("pbDate").value = pb ? (pb.date || todayDateOnly()) : todayDateOnly();
+    $("pbItemsList").innerHTML = "";
+    pbItemRowSeq = 0;
+    delete $("pbBillTotalOverride").dataset.userEdited;
+    if(pb && pb.items && pb.items.length){
+      pb.items.forEach(it => pbAddItemRow(it));
+    } else {
+      pbAddItemRow();
+    }
+    $("pbBillTotalOverride").value = pb ? (pb.billTotal !== undefined ? pb.billTotal : "") : "";
+    if(pb) $("pbBillTotalOverride").dataset.userEdited = "1";
+    pbSelectMethod(pb ? (pb.paymentMethod || "cash") : "cash");
+    const paidSoFar = pb ? purchaseBillPaid(pb) : 0;
+    $("pbPaidAmount").value = pb ? "0" : "0";
+    $("pbPaidDate").value = todayDateOnly();
+    pbRecomputeTotal();
+    pbUpdateBalancePreview();
+    $("pbFormDeleteBtn").style.display = pb ? "block" : "none";
+    $("purchaseBillOverlay").classList.remove("show");
+    $("purchaseBillDetailOverlay").classList.remove("show");
+    $("purchaseBillFormOverlay").classList.add("show");
+  }
+
+  $("newPurchaseBillBtn").addEventListener("click", () => openPurchaseBillForm(null));
+  $("closePurchaseBillForm").addEventListener("click", () => {
+    $("purchaseBillFormOverlay").classList.remove("show");
+  });
+
+  $("pbAddItemRowBtn").addEventListener("click", () => pbAddItemRow());
+
+  $("pbSaveBtn").addEventListener("click", () => {
+    const traderName = $("pbTraderName").value.trim();
+    if(!traderName){ alert("வியாபாரி பெயரை இடவும்."); return; }
+    const rows = Array.from($("pbItemsList").querySelectorAll(".pb-item-row"));
+    const items = rows.map(row => {
+      const name = row.querySelector(".pb-item-name").value.trim();
+      const qty = parseFloat(row.querySelector(".pb-item-qty").value) || 0;
+      const rate = parseFloat(row.querySelector(".pb-item-rate").value) || 0;
+      return { name, qty, rate, amount: qty * rate };
+    }).filter(it => it.name);
+    if(items.length === 0){ alert("குறைந்தது ஒரு பொருள் வரிசையையாவது நிரப்பவும்."); return; }
+    const billTotal = parseFloat($("pbBillTotalOverride").value) || items.reduce((s,it)=>s+it.amount,0);
+    const newPaymentAmt = parseFloat($("pbPaidAmount").value) || 0;
+    const paidDate = $("pbPaidDate").value || todayDateOnly();
+
+    if(pbEditingId){
+      const pb = purchaseBills.find(p => p.id === pbEditingId);
+      if(pb){
+        pb.traderName = traderName;
+        pb.invoiceNo = $("pbInvoiceNo").value.trim();
+        pb.date = $("pbDate").value || todayDateOnly();
+        pb.items = items;
+        pb.billTotal = billTotal;
+        pb.paymentMethod = pbSelectedMethod;
+        if(newPaymentAmt > 0){
+          pb.payments = pb.payments || [];
+          pb.payments.push({ amount: newPaymentAmt, date: paidDate });
+        }
+      }
+    } else {
+      const pb = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2,7),
+        traderName,
+        invoiceNo: $("pbInvoiceNo").value.trim(),
+        date: $("pbDate").value || todayDateOnly(),
+        items,
+        billTotal,
+        paymentMethod: pbSelectedMethod,
+        payments: newPaymentAmt > 0 ? [{ amount: newPaymentAmt, date: paidDate }] : [],
+        createdAt: Date.now()
+      };
+      purchaseBills.push(pb);
+    }
+    savePurchaseBills();
+    updatePurchaseBillBadge();
+    $("purchaseBillFormOverlay").classList.remove("show");
+    setStatus("✅ கொள்முதல் பில் சேமிக்கப்பட்டது");
+    renderPurchaseBillList();
+    $("purchaseBillOverlay").classList.add("show");
+  });
+
+  $("pbFormDeleteBtn").addEventListener("click", () => {
+    if(!pbEditingId) return;
+    if(!confirm("இந்த கொள்முதல் பில்-ஐ நீக்கவா? இது மீட்க முடியாது.")) return;
+    purchaseBills = purchaseBills.filter(p => p.id !== pbEditingId);
+    savePurchaseBills();
+    updatePurchaseBillBadge();
+    $("purchaseBillFormOverlay").classList.remove("show");
+    renderPurchaseBillList();
+    $("purchaseBillOverlay").classList.add("show");
+  });
+
+  // ---- Purchase Bill detail view ----
+  let pbDetailCurrentId = null;
+
+  function openPurchaseBillDetail(id){
+    const pb = purchaseBills.find(p => p.id === id);
+    if(!pb) return;
+    pbDetailCurrentId = id;
+    $("pbDetailMeta").textContent = (pb.traderName || "") + " · Invoice: " + (pb.invoiceNo || "-") + " · " + (pb.date || "") + " · " + paymentMethodLabel(pb.paymentMethod);
+    $("pbDetailItemsBody").innerHTML = (pb.items || []).map(it => `<tr>
+      <td>${escapeHtml(it.name)}</td>
+      <td class="num">${it.qty}</td>
+      <td class="num">₹${(parseFloat(it.rate)||0).toFixed(0)}</td>
+      <td class="num">₹${(parseFloat(it.amount)||0).toFixed(0)}</td>
+    </tr>`).join("");
+    $("pbDetailTotal").textContent = (parseFloat(pb.billTotal)||0).toFixed(0);
+    const payments = pb.payments || [];
+    $("pbDetailPaymentsList").innerHTML = payments.length
+      ? payments.map(p => `<div class="history-row"><span>${escapeHtml(p.date)}</span><span>₹${(parseFloat(p.amount)||0).toFixed(0)}</span></div>`).join("")
+      : '<div class="divider-note" style="margin-top:0;">இதுவரை எந்த பணமும் செலுத்தப்படவில்லை.</div>';
+    const bal = purchaseBillBalance(pb);
+    const balEl = $("pbDetailBalance");
+    balEl.textContent = "₹" + bal.toFixed(0);
+    balEl.className = "balance-amount " + (bal <= 0.001 ? "give" : "short");
+    $("pbDetailAddPaymentBtn").style.display = bal > 0.001 ? "block" : "none";
+    $("purchaseBillOverlay").classList.remove("show");
+    $("purchaseBillDetailOverlay").classList.add("show");
+  }
+
+  $("closePurchaseBillDetail").addEventListener("click", () => {
+    $("purchaseBillDetailOverlay").classList.remove("show");
+  });
+  $("pbDetailEditBtn").addEventListener("click", () => {
+    const pb = purchaseBills.find(p => p.id === pbDetailCurrentId);
+    if(pb) openPurchaseBillForm(pb);
+  });
+  $("pbDetailDeleteBtn").addEventListener("click", () => {
+    if(!pbDetailCurrentId) return;
+    if(!confirm("இந்த கொள்முதல் பில்-ஐ நீக்கவா? இது மீட்க முடியாது.")) return;
+    purchaseBills = purchaseBills.filter(p => p.id !== pbDetailCurrentId);
+    savePurchaseBills();
+    updatePurchaseBillBadge();
+    $("purchaseBillDetailOverlay").classList.remove("show");
+    renderPurchaseBillList();
+    $("purchaseBillOverlay").classList.add("show");
+  });
+
+  $("pbDetailAddPaymentBtn").addEventListener("click", () => {
+    const pb = purchaseBills.find(p => p.id === pbDetailCurrentId);
+    if(!pb) return;
+    const bal = purchaseBillBalance(pb);
+    $("pbPayCurrentBalance").textContent = "💡 தற்போதைய நிலுவை: ₹" + bal.toFixed(0) + ". முழுவதும் செலுத்தினால் அப்படியே தட்டவும்; பாதி செலுத்தினால் தொகையை மாற்றி தட்டச்சு செய்யவும்.";
+    $("pbPayAmount").value = bal.toFixed(0);
+    $("pbPayDate").value = todayDateOnly();
+    $("pbPayOverlay").classList.add("show");
+  });
+  $("pbPayCancelBtn").addEventListener("click", () => {
+    $("pbPayOverlay").classList.remove("show");
+  });
+  $("pbPayConfirmBtn").addEventListener("click", () => {
+    const pb = purchaseBills.find(p => p.id === pbDetailCurrentId);
+    if(!pb) return;
+    const amt = parseFloat($("pbPayAmount").value);
+    if(isNaN(amt) || amt <= 0){ alert("சரியான தொகை இடவும்"); return; }
+    pb.payments = pb.payments || [];
+    pb.payments.push({ amount: amt, date: $("pbPayDate").value || todayDateOnly() });
+    savePurchaseBills();
+    updatePurchaseBillBadge();
+    $("pbPayOverlay").classList.remove("show");
+    setStatus("✅ ₹" + amt.toFixed(0) + " பணம் செலுத்தியது பதிவு செய்யப்பட்டது");
+    openPurchaseBillDetail(pb.id);
+  });
+
   $("standbyBtn").addEventListener("click", () => {
     renderStandbyList();
     $("standbyOverlay").classList.add("show");
@@ -3675,7 +4119,7 @@
     $("standbyOverlay").classList.remove("show");
   });
 
-  [$("settingsOverlay"), $("historyOverlay"), $("paymentOverlay"), $("receiptOverlay"), $("standbyOverlay"), $("reviewOverlay"), $("voiceConfirmOverlay"), $("variantPickerOverlay"), $("itemVariantsOverlay")].forEach(ov => {
+  [$("settingsOverlay"), $("historyOverlay"), $("paymentOverlay"), $("receiptOverlay"), $("standbyOverlay"), $("reviewOverlay"), $("voiceConfirmOverlay"), $("variantPickerOverlay"), $("itemVariantsOverlay"), $("purchaseBillOverlay"), $("purchaseBillFormOverlay"), $("purchaseBillDetailOverlay"), $("pbPayOverlay")].forEach(ov => {
     ov.addEventListener("click", (e)=>{ if(e.target === ov) ov.classList.remove("show"); });
   });
 
