@@ -3153,26 +3153,26 @@
     // Pass 1: measure total height needed by laying everything out on a
     // throwaway canvas first, then draw for real at that exact height.
     const measure = document.createElement("canvas").getContext("2d");
-    const lineH = 24, smallLineH = 20;
-    const bannerPad = 14;
-    const bannerHeight = bannerPad*2 + 26 + (shopPhone ? 18 : 0);
-    let y = bannerHeight + 12;
+    const lineH = 30, smallLineH = 25;
+    const bannerPad = 16;
+    const bannerHeight = bannerPad*2 + 32 + (shopPhone ? 22 : 0);
+    let y = bannerHeight + 14;
     y += smallLineH; // bill meta
-    y += 14; // dashed line + gap
-    measure.font = "16px 'Noto Sans Tamil', sans-serif";
+    y += 16; // dashed line + gap
+    measure.font = "20px 'Noto Sans Tamil', sans-serif";
     receipt.items.forEach(it => {
-      const nameLines = wrapCanvasText(measure, it.name, W - PAD*2 - 90);
+      const nameLines = wrapCanvasText(measure, it.name, W - PAD*2 - 100);
       y += lineH * Math.max(1, nameLines.length);
     });
-    y += 14; // dashed line + gap
-    y += lineH + 6; // total row
+    y += 16; // dashed line + gap
+    y += lineH + 8; // total row
     y += smallLineH; // method
     if(receipt.method === "cash"){
       y += smallLineH * 2;
     } else if(receipt.method === "credit" && receipt.customerName){
       y += smallLineH;
     }
-    y += 10;
+    y += 12;
     y += smallLineH; // footer
     y += PAD;
     const H = Math.ceil(y);
@@ -3193,17 +3193,17 @@
     ctx.fillStyle = "#ffffff";
     ctx.textAlign = "center";
     let by = bannerPad;
-    ctx.font = "800 20px 'Baloo Thambi 2', 'Noto Sans Tamil', sans-serif";
+    ctx.font = "800 24px 'Baloo Thambi 2', 'Noto Sans Tamil', sans-serif";
     ctx.fillText(shopName, W/2, by);
-    by += 26;
+    by += 32;
     if(shopPhone){
-      ctx.font = "13px 'Noto Sans Tamil', sans-serif";
+      ctx.font = "16px 'Noto Sans Tamil', sans-serif";
       ctx.fillText("📞 " + shopPhone, W/2, by);
     }
 
     ctx.fillStyle = "#000000";
-    let cy = bannerHeight + 12;
-    ctx.font = "13px 'Noto Sans Tamil', sans-serif";
+    let cy = bannerHeight + 14;
+    ctx.font = "16px 'Noto Sans Tamil', sans-serif";
     ctx.textAlign = "center";
     ctx.fillText("பில் எண் #" + receipt.billNo + " - " + receipt.time, W/2, cy);
     cy += smallLineH;
@@ -3218,14 +3218,14 @@
       ctx.stroke();
       ctx.restore();
     }
-    dashedLine(cy + 5);
-    cy += 14;
+    dashedLine(cy + 6);
+    cy += 16;
 
     ctx.textAlign = "left";
-    ctx.font = "16px 'Noto Sans Tamil', sans-serif";
+    ctx.font = "20px 'Noto Sans Tamil', sans-serif";
     receipt.items.forEach(it => {
       const amtText = "₹" + (it.price*it.qty).toFixed(0);
-      const nameMaxWidth = W - PAD*2 - 90;
+      const nameMaxWidth = W - PAD*2 - 100;
       const nameLines = wrapCanvasText(ctx, it.name + " x" + formatQty(it.qty), nameMaxWidth);
       nameLines.forEach((ln, idx) => {
         ctx.textAlign = "left";
@@ -3237,18 +3237,18 @@
         cy += lineH;
       });
     });
-    dashedLine(cy + 5);
-    cy += 14;
+    dashedLine(cy + 6);
+    cy += 16;
 
     ctx.textAlign = "left";
-    ctx.font = "700 17px 'Noto Sans Tamil', sans-serif";
+    ctx.font = "700 21px 'Noto Sans Tamil', sans-serif";
     ctx.fillText("மொத்தம்", PAD, cy);
     ctx.textAlign = "right";
     ctx.fillText("₹" + receipt.total.toFixed(0), W - PAD, cy);
-    cy += lineH + 6;
+    cy += lineH + 8;
 
     ctx.textAlign = "left";
-    ctx.font = "14px 'Noto Sans Tamil', sans-serif";
+    ctx.font = "18px 'Noto Sans Tamil', sans-serif";
     ctx.fillText(methodLabel, PAD, cy);
     cy += smallLineH;
     if(receipt.method === "cash"){
@@ -3260,9 +3260,9 @@
       ctx.fillText(receipt.customerName, PAD, cy);
       cy += smallLineH;
     }
-    cy += 10;
+    cy += 12;
     ctx.textAlign = "center";
-    ctx.font = "14px 'Noto Sans Tamil', sans-serif";
+    ctx.font = "18px 'Noto Sans Tamil', sans-serif";
     ctx.fillText("நன்றி! Thank you 🙏", W/2, cy);
 
     return new Promise(resolve => canvas.toBlob(blob => resolve(blob), "image/png"));
