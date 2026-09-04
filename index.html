@@ -81,6 +81,20 @@
   .icon-btn:active{background:var(--board-lighter);}
   .header-btns{display:flex;gap:8px;flex-shrink:0;}
   .total-board{margin-top:10px;text-align:center;}
+  .trial-warning-bar{
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    background:linear-gradient(90deg,#e94c4c,#f2803b);
+    color:#fff;font-weight:700;font-size:13.5px;
+    padding:9px 14px;position:relative;
+  }
+  .trial-warning-bar #trialWhatsappBtn{
+    background:#1ebe57;color:#fff;padding:5px 12px;border-radius:20px;
+    font-size:13px;font-weight:800;white-space:nowrap;
+  }
+  .trial-warning-bar #trialWarningClose{
+    background:transparent;border:none;color:#fff;font-size:16px;
+    margin-left:auto;cursor:pointer;padding:2px 6px;
+  }
   .total-label{font-size:14px;color:var(--chalk-dim);letter-spacing:0.5px;}
   .total-amount{
     font-family:'Baloo Thambi 2',sans-serif;
@@ -444,6 +458,12 @@
       <div class="item-count" id="itemCountLine">0 பொருட்கள்</div>
     </div>
   </header>
+
+  <div class="trial-warning-bar" id="trialWarningBar" style="display:none;">
+    <span id="trialWarningText"></span>
+    <a id="trialWhatsappBtn" href="#" target="_blank" style="text-decoration:none;">📲 WhatsApp-ல் தொடர்பு கொள்ள</a>
+    <button id="trialWarningClose" title="மூடு">✕</button>
+  </div>
 
   <div class="mic-wrap">
     <button class="mic-btn" id="micBtn">🎙️</button>
@@ -4183,6 +4203,38 @@
     }
   }
 
+  // Shows an orange/red banner with a WhatsApp button once the free trial
+  // (or a paid, expiring activation) has 5 or fewer days remaining, so the
+  // shop owner gets advance notice and a one-tap way to reach us to extend.
+  const SUPPORT_WHATSAPP_NUMBER = "919360457996";
+  function checkTrialWarning(){
+    if(localStorage.getItem("kadai:activated") === "1") return; // permanent unlock, never warn
+    const activatedUntil = localStorage.getItem("kadai:activated_until");
+    let daysLeft, isRenewal;
+    if(activatedUntil){
+      const msLeft = parseInt(activatedUntil,10) - Date.now();
+      if(msLeft <= 0) return; // already expired — lock screen handles this
+      daysLeft = Math.ceil(msLeft / DAY_MS);
+      isRenewal = true;
+    } else {
+      const firstRun = localStorage.getItem("kadai:firstrun");
+      if(!firstRun) return;
+      const daysUsed = (Date.now() - parseInt(firstRun,10)) / DAY_MS;
+      daysLeft = Math.ceil(TRIAL_DAYS - daysUsed);
+      isRenewal = false;
+    }
+    if(daysLeft > 5 || daysLeft < 1) return;
+    const label = isRenewal ? "சந்தா காலம்" : "இலவச பயன்பாட்டு காலம்";
+    const dayWord = daysLeft === 1 ? "1 நாளில்" : (daysLeft + " நாட்களில்");
+    $("trialWarningText").textContent = "⚠️ உங்கள் " + label + " இன்னும் " + dayWord + " முடிவடையும். நீட்டிக்க கீழே தொடர்பு கொள்ளவும்.";
+    const waMsg = encodeURIComponent("வணக்கம், என் Kadai Bill App-ன் " + label + "-ஐ நீட்டிக்க (extend) விரும்புகிறேன்.");
+    $("trialWhatsappBtn").href = "https://wa.me/" + SUPPORT_WHATSAPP_NUMBER + "?text=" + waMsg;
+    $("trialWarningBar").style.display = "flex";
+  }
+  $("trialWarningClose").addEventListener("click", () => {
+    $("trialWarningBar").style.display = "none";
+  });
+
   $("lockSubmitBtn").addEventListener("click", async () => {
     const code = $("lockCodeInput").value.trim();
     if(!code){
@@ -4230,6 +4282,7 @@
     // cloud backup and silently pushes a fresh one if so. Does nothing
     // if no Sync Code is set.
     checkAutoBackupDue();
+    checkTrialWarning();
   }
 })();
 
