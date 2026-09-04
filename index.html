@@ -3111,14 +3111,183 @@
     try{ return JSON.parse($("receiptOverlay").dataset.current || "{}"); }catch(e){ return {}; }
   }
 
-  // Direct Bluetooth print: uses Android's native Share sheet instead of
-  // window.print(). If a share-target print app (e.g. "ESC/POS Bluetooth
-  // Print Service") is installed and configured with the paired Evolute
-  // printer, it appears in this list and prints immediately — no PDF,
-  // no file picker, no separate app to open manually.
+  // Wraps a line of text to fit maxWidth on the given canvas context,
+  // breaking at spaces where possible and falling back to a hard
+  // character break for a single very long word (e.g. a long item name).
+  function wrapCanvasText(ctx, text, maxWidth){
+    const words = String(text).split(" ");
+    const lines = [];
+    let line = "";
+    words.forEach(word => {
+      const test = line ? line + " " + word : word;
+      if(ctx.measureText(test).width <= maxWidth || !line){
+        line = test;
+      } else {
+        lines.push(line);
+        line = word;
+      }
+      while(ctx.measureText(line).width > maxWidth && line.length > 1){
+        // Single word still too wide — hard-break it character by character.
+        let i = line.length - 1;
+        while(i > 1 && ctx.measureText(line.slice(0,i)).width > maxWidth) i--;
+        lines.push(line.slice(0,i));
+        line = line.slice(i);
+      }
+    });
+    if(line) lines.push(line);
+    return lines;
+  }
+
+  // Renders the receipt as an actual PNG image (not text) so that Tamil
+  // prints correctly on Bluetooth thermal printers whose built-in font
+  // table only covers English/numbers. 384px width matches a standard
+  // 58mm thermal roll at 203dpi; text stays crisp because it's drawn at
+  // 2x and scaled down.
+  async function renderReceiptImage(receipt){
+    const W = 384, SCALE = 2;
+    const PAD = 16;
+    const BANNER_BG = "#1e3d2e";
+    const methodLabel = receipt.method === "cash" ? "Cash" : (receipt.method === "bank" ? "Bank / UPI" : "Credit");
+    if(document.fonts && document.fonts.ready) await document.fonts.ready;
+
+    // Pass 1: measure total height needed by laying everything out on a
+    // throwaway canvas first, then draw for real at that exact height.
+    const measure = document.createElement("canvas").getContext("2d");
+    const lineH = 24, smallLineH = 20;
+    const bannerPad = 14;
+    const bannerHeight = bannerPad*2 + 26 + (shopPhone ? 18 : 0);
+    let y = bannerHeight + 12;
+    y += smallLineH; // bill meta
+    y += 14; // dashed line + gap
+    measure.font = "16px 'Noto Sans Tamil', sans-serif";
+    receipt.items.forEach(it => {
+      const nameLines = wrapCanvasText(measure, it.name, W - PAD*2 - 90);
+      y += lineH * Math.max(1, nameLines.length);
+    });
+    y += 14; // dashed line + gap
+    y += lineH + 6; // total row
+    y += smallLineH; // method
+    if(receipt.method === "cash"){
+      y += smallLineH * 2;
+    } else if(receipt.method === "credit" && receipt.customerName){
+      y += smallLineH;
+    }
+    y += 10;
+    y += smallLineH; // footer
+    y += PAD;
+    const H = Math.ceil(y);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = W * SCALE;
+    canvas.height = H * SCALE;
+    const ctx = canvas.getContext("2d");
+    ctx.scale(SCALE, SCALE);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, W, H);
+    ctx.textBaseline = "top";
+
+    // ---- Ribbon banner: shop name (+ phone) on a solid dark-green block,
+    // matching the same look as the PDF print header. ----
+    ctx.fillStyle = BANNER_BG;
+    ctx.fillRect(0, 0, W, bannerHeight);
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    let by = bannerPad;
+    ctx.font = "800 20px 'Baloo Thambi 2', 'Noto Sans Tamil', sans-serif";
+    ctx.fillText(shopName, W/2, by);
+    by += 26;
+    if(shopPhone){
+      ctx.font = "13px 'Noto Sans Tamil', sans-serif";
+      ctx.fillText("📞 " + shopPhone, W/2, by);
+    }
+
+    ctx.fillStyle = "#000000";
+    let cy = bannerHeight + 12;
+    ctx.font = "13px 'Noto Sans Tamil', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("பில் எண் #" + receipt.billNo + " - " + receipt.time, W/2, cy);
+    cy += smallLineH;
+
+    function dashedLine(yy){
+      ctx.save();
+      ctx.strokeStyle = "#000";
+      ctx.setLineDash([3,3]);
+      ctx.beginPath();
+      ctx.moveTo(PAD, yy);
+      ctx.lineTo(W - PAD, yy);
+      ctx.stroke();
+      ctx.restore();
+    }
+    dashedLine(cy + 5);
+    cy += 14;
+
+    ctx.textAlign = "left";
+    ctx.font = "16px 'Noto Sans Tamil', sans-serif";
+    receipt.items.forEach(it => {
+      const amtText = "₹" + (it.price*it.qty).toFixed(0);
+      const nameMaxWidth = W - PAD*2 - 90;
+      const nameLines = wrapCanvasText(ctx, it.name + " x" + formatQty(it.qty), nameMaxWidth);
+      nameLines.forEach((ln, idx) => {
+        ctx.textAlign = "left";
+        ctx.fillText(ln, PAD, cy);
+        if(idx === 0){
+          ctx.textAlign = "right";
+          ctx.fillText(amtText, W - PAD, cy);
+        }
+        cy += lineH;
+      });
+    });
+    dashedLine(cy + 5);
+    cy += 14;
+
+    ctx.textAlign = "left";
+    ctx.font = "700 17px 'Noto Sans Tamil', sans-serif";
+    ctx.fillText("மொத்தம்", PAD, cy);
+    ctx.textAlign = "right";
+    ctx.fillText("₹" + receipt.total.toFixed(0), W - PAD, cy);
+    cy += lineH + 6;
+
+    ctx.textAlign = "left";
+    ctx.font = "14px 'Noto Sans Tamil', sans-serif";
+    ctx.fillText(methodLabel, PAD, cy);
+    cy += smallLineH;
+    if(receipt.method === "cash"){
+      ctx.fillText("பெற்றது: ₹" + receipt.received.toFixed(0), PAD, cy);
+      cy += smallLineH;
+      ctx.fillText((receipt.balance>=0?"மீதம் கொடுக்கப்பட்டது":"இன்னும் தேவை") + ": ₹" + Math.abs(receipt.balance).toFixed(0), PAD, cy);
+      cy += smallLineH;
+    } else if(receipt.method === "credit" && receipt.customerName){
+      ctx.fillText(receipt.customerName, PAD, cy);
+      cy += smallLineH;
+    }
+    cy += 10;
+    ctx.textAlign = "center";
+    ctx.font = "14px 'Noto Sans Tamil', sans-serif";
+    ctx.fillText("நன்றி! Thank you 🙏", W/2, cy);
+
+    return new Promise(resolve => canvas.toBlob(blob => resolve(blob), "image/png"));
+  }
+
+  // Direct Bluetooth print: shares an IMAGE of the receipt (not plain
+  // text) through Android's native Share sheet, so a Bluetooth ESC/POS
+  // print app (e.g. RawBT, "Bluetooth Print") prints it as a picture —
+  // Tamil text then comes out correctly, since it's pixels, not a font
+  // table lookup on the printer itself. Falls back to plain-text share
+  // (English-safe parts only) on browsers that can't share image files.
   $("directPrintBtn").addEventListener("click", async () => {
     const receipt = getCurrentReceipt();
     if(!receipt.items) return;
+    try{
+      const blob = await renderReceiptImage(receipt);
+      const file = new File([blob], "bill-" + receipt.billNo + ".png", { type: "image/png" });
+      if(navigator.canShare && navigator.canShare({ files: [file] })){
+        await navigator.share({ files: [file], title: shopName });
+        return;
+      }
+    }catch(e){
+      // Image share failed (unsupported browser, user cancelled the
+      // native canvas render, etc.) — fall through to the text version.
+    }
     const text = buildReceiptText(receipt);
     if(navigator.share){
       try{
