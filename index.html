@@ -272,6 +272,20 @@
   .pb-status-badge.pb-partial{background:rgba(255,196,64,0.95);color:#402b00;}
   .pb-status-badge.pb-unpaid{background:rgba(233,76,76,0.95);color:#fff;}
   .pb-balance-badge{margin-top:6px;font-size:13px;font-weight:800;color:#fff;background:rgba(224,82,82,0.95);padding:3px 10px;border-radius:8px;display:inline-block;}
+  .stock-move-row{display:flex;align-items:center;justify-content:space-between;border-radius:10px;padding:9px 12px;margin-top:8px;border:1px solid rgba(245,241,227,0.15);}
+  .stock-move-row.in{background:rgba(111,191,115,0.12);border-color:rgba(111,191,115,0.35);}
+  .stock-move-row.out{background:rgba(224,82,82,0.10);border-color:rgba(224,82,82,0.3);}
+  .stock-move-row.adj{background:rgba(242,176,59,0.10);border-color:rgba(242,176,59,0.3);}
+  .stock-move-row .smr-info{display:flex;flex-direction:column;}
+  .stock-move-row .smr-note{font-size:13px;color:var(--chalk-dim);margin-top:2px;}
+  .stock-move-row .smr-qty{font-weight:800;font-size:16px;}
+  .stock-move-row.in .smr-qty{color:var(--ok);}
+  .stock-move-row.out .smr-qty{color:var(--danger);}
+  .stock-move-row.adj .smr-qty{color:var(--gold);}
+  .stock-item-row{display:flex;align-items:center;justify-content:space-between;background:var(--board);border:1px solid rgba(245,241,227,0.15);border-radius:10px;padding:10px 12px;margin-top:8px;cursor:pointer;}
+  .stock-item-row .si-name{font-weight:700;color:var(--chalk);}
+  .stock-item-row .si-qty{font-weight:800;font-size:16px;color:var(--ok);}
+  .stock-item-row .si-qty.low{color:var(--danger);}
 
   .pie-wrap{display:flex;align-items:center;gap:16px;padding:8px 4px 16px;}
   .pie-legend{flex:1;display:flex;flex-direction:column;gap:6px;}
@@ -525,6 +539,8 @@
 
     <div class="field-label" style="margin-top:20px;">இருக்கும் பொருட்கள்</div>
     <div id="existingItemsList"></div>
+    <button class="btn btn-history" id="openStockLedgerBtn" style="width:100%;margin-top:10px;">📊 இருப்பு வரலாறு (Stock History)</button>
+    <div class="divider-note">💡 ஒரு பொருளுக்கு "இருப்பு" எண்ணை நிரப்பினால் (அல்லது 📦 கொள்முதல் பில்-ல் அந்த பொருள் பெயரை சேர்த்தால்), விற்கும்போது தானாக இருப்பு குறையும். இங்கு ஒவ்வொரு பொருளின் தற்போதைய இருப்பு நிலையையும், எப்போது எவ்வளவு வந்தது/போனது என்ற முழு வரலாற்றையும் பார்க்கலாம்.</div>
 
     <div class="divider-note">💡 பொருள் பெயரை மைக் பட்டன் மூலம் பேசி நிரப்பலாம். விலையை மட்டும் தட்டச்சு செய்யவும்.</div>
 
@@ -770,6 +786,31 @@
   </div>
 </div>
 
+<!-- Stock Ledger: current stock position for every stock-tracked item, and
+     the full incoming (Purchase Bill / manual restock) vs outgoing (sale)
+     history behind that number — the "stock note" equivalent of the
+     Credit Ledger, but for goods instead of money. -->
+<div class="overlay" id="stockLedgerOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">📊 இருப்பு வரலாறு (Stock) <button class="icon-btn" id="closeStockLedger">✕</button></div>
+    <div id="stockLedgerList" style="margin-top:6px;"></div>
+    <div class="divider-note">💡 📦 கொள்முதல் பில் சேர்க்கும்போது அந்த பொருள் பெயர் இங்கு உள்ள பொருட்கள் பட்டியலில் இருந்தால், அதன் இருப்பு தானாக கூடும். பில் விற்கும்போது தானாக குறையும். ஒரு பொருளை தட்டி முழு வரலாற்றையும் பார்க்கலாம்.</div>
+  </div>
+</div>
+
+<div class="overlay" id="stockLedgerDetailOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title" id="stockDetailTitle">இருப்பு வரலாறு <button class="icon-btn" id="closeStockLedgerDetail">✕</button></div>
+    <div class="balance-panel">
+      <div class="balance-label">தற்போதைய இருப்பு</div>
+      <div class="balance-amount" id="stockDetailCurrent">0</div>
+    </div>
+    <div id="stockDetailList" style="margin-top:12px;"></div>
+  </div>
+</div>
+
 <!-- Standby sheet -->
 <div class="overlay" id="standbyOverlay">
   <div class="sheet">
@@ -979,6 +1020,8 @@
   const STORAGE_KEY_CUSTOMER_CONTACTS = "kadai:customercontacts";
   const STORAGE_KEY_STOCKLEDGER = "kadai:stockledger";
   const STORAGE_KEY_PURCHASE_BILLS = "kadai:purchasebills";
+  const STORAGE_KEY_DEVICEID = "kadai:deviceid";
+  const STORAGE_KEY_LAST_USAGE_PING = "kadai:lastusageping";
   const todayKey = () => "kadai:sales:" + new Date().toISOString().slice(0,10);
   const todayDateOnly = () => new Date().toISOString().slice(0,10);
 
@@ -1301,6 +1344,32 @@
     });
     if(changed) saveItems();
     return lowStockNames;
+  }
+
+  // Applies a newly-created Purchase Bill's items as incoming stock: any
+  // line whose name matches an existing catalog item (case/space
+  // insensitive) increases that item's stock and starts tracking it if it
+  // wasn't already. Items with no matching catalog entry are skipped and
+  // their names returned so the caller can let the shop owner know.
+  // Only called for brand-new bills — editing an existing bill never
+  // re-applies stock, to avoid double-counting.
+  function applyPurchaseBillToStock(pb){
+    const unmatched = [];
+    let changed = false;
+    (pb.items || []).forEach(line => {
+      if(!line.name || !line.qty) return;
+      const target = String(line.name).trim().toLowerCase();
+      const catalogItem = items.find(i => String(i.name).trim().toLowerCase() === target);
+      if(!catalogItem){
+        unmatched.push(line.name);
+        return;
+      }
+      catalogItem.stock = roundStock((typeof catalogItem.stock === "number" ? catalogItem.stock : 0) + (parseFloat(line.qty) || 0));
+      addStockLedgerEntry(catalogItem.id, "purchase", parseFloat(line.qty) || 0, "கொள்முதல்: " + (pb.traderName || "") + (pb.invoiceNo ? " · Invoice " + pb.invoiceNo : "") + " · " + (pb.date || ""));
+      changed = true;
+    });
+    if(changed) saveItems();
+    return unmatched;
   }
 
   // Lists customers who: have an outstanding balance, have a phone number
@@ -4014,6 +4083,7 @@
     const billTotal = parseFloat($("pbBillTotalOverride").value) || items.reduce((s,it)=>s+it.amount,0);
     const newPaymentAmt = parseFloat($("pbPaidAmount").value) || 0;
     const paidDate = $("pbPaidDate").value || todayDateOnly();
+    let stockUnmatched = [];
 
     if(pbEditingId){
       const pb = purchaseBills.find(p => p.id === pbEditingId);
@@ -4042,11 +4112,14 @@
         createdAt: Date.now()
       };
       purchaseBills.push(pb);
+      stockUnmatched = applyPurchaseBillToStock(pb);
     }
     savePurchaseBills();
     updatePurchaseBillBadge();
     $("purchaseBillFormOverlay").classList.remove("show");
-    setStatus("✅ கொள்முதல் பில் சேமிக்கப்பட்டது");
+    setStatus(stockUnmatched.length
+      ? "✅ பில் சேமிக்கப்பட்டது. ⚠️ இருப்பு புதுப்பிக்கப்படவில்லை (பொருட்கள் பட்டியலில் இல்லை): " + stockUnmatched.join(", ")
+      : "✅ கொள்முதல் பில் சேமிக்கப்பட்டது");
     renderPurchaseBillList();
     $("purchaseBillOverlay").classList.add("show");
   });
@@ -4134,6 +4207,72 @@
     openPurchaseBillDetail(pb.id);
   });
 
+  // ---- Stock Ledger view: current position + full history per item ----
+  function renderStockLedgerList(){
+    const tracked = items.filter(it => typeof it.stock === "number").sort((a,b) => a.name.localeCompare(b.name));
+    const listEl = $("stockLedgerList");
+    if(tracked.length === 0){
+      listEl.innerHTML = '<div class="standby-empty">இன்னும் எந்த பொருளுக்கும் இருப்பு கண்காணிக்கப்படவில்லை. Settings-ல் ஒரு பொருளுக்கு "இருப்பு" எண்ணை நிரப்பினால், அல்லது 📦 கொள்முதல் பில்-ல் அந்த பொருள் பெயரை சேர்த்தால், இங்கு தானாக தெரியும்.</div>';
+      return;
+    }
+    listEl.innerHTML = tracked.map(it => {
+      const low = it.stock <= 5;
+      return `<div class="stock-item-row" data-id="${escapeHtml(it.id)}">
+        <span class="si-name">${escapeHtml(it.name)}</span>
+        <span class="si-qty${low ? ' low' : ''}">${formatStock(it.stock)}</span>
+      </div>`;
+    }).join("");
+    listEl.querySelectorAll(".stock-item-row").forEach(row => {
+      row.addEventListener("click", () => openStockLedgerDetail(row.dataset.id));
+    });
+  }
+
+  function stockMoveLabel(type){
+    if(type === "purchase") return "📦 இருப்பு வந்தது";
+    if(type === "sale") return "🧾 விற்பனை";
+    if(type === "return") return "↩️ திரும்ப சேர்க்கப்பட்டது";
+    return "✏️ நேரடியாக சரிசெய்யப்பட்டது";
+  }
+  function stockMoveClass(type){
+    if(type === "sale") return "out";
+    if(type === "adjust") return "adj";
+    return "in"; // purchase, return
+  }
+  function stockMoveSign(type){
+    return type === "sale" ? "−" : "+";
+  }
+
+  function openStockLedgerDetail(itemId){
+    const it = items.find(i => i.id === itemId);
+    if(!it) return;
+    $("stockDetailTitle").textContent = it.name + " — இருப்பு வரலாறு";
+    $("stockDetailCurrent").textContent = formatStock(typeof it.stock === "number" ? it.stock : 0);
+    const entries = (stockLedger[itemId] || []).slice().reverse();
+    $("stockDetailList").innerHTML = entries.length
+      ? entries.map(e => `<div class="stock-move-row ${stockMoveClass(e.type)}">
+          <div class="smr-info">
+            <span>${stockMoveLabel(e.type)}</span>
+            <span class="smr-note">📅 ${escapeHtml(e.date)}${e.note ? " · " + escapeHtml(e.note) : ""}</span>
+          </div>
+          <span class="smr-qty">${stockMoveSign(e.type)}${formatStock(e.qty)}</span>
+        </div>`).join("")
+      : '<div class="divider-note" style="margin-top:0;">இதுவரை எந்த இருப்பு நடவடிக்கையும் பதிவு செய்யப்படவில்லை.</div>';
+    $("stockLedgerOverlay").classList.remove("show");
+    $("stockLedgerDetailOverlay").classList.add("show");
+  }
+
+  $("openStockLedgerBtn").addEventListener("click", () => {
+    renderStockLedgerList();
+    $("settingsOverlay").classList.remove("show");
+    $("stockLedgerOverlay").classList.add("show");
+  });
+  $("closeStockLedger").addEventListener("click", () => {
+    $("stockLedgerOverlay").classList.remove("show");
+  });
+  $("closeStockLedgerDetail").addEventListener("click", () => {
+    $("stockLedgerDetailOverlay").classList.remove("show");
+  });
+
   $("standbyBtn").addEventListener("click", () => {
     renderStandbyList();
     $("standbyOverlay").classList.add("show");
@@ -4156,7 +4295,7 @@
     $("standbyOverlay").classList.remove("show");
   });
 
-  [$("settingsOverlay"), $("historyOverlay"), $("paymentOverlay"), $("receiptOverlay"), $("standbyOverlay"), $("reviewOverlay"), $("voiceConfirmOverlay"), $("variantPickerOverlay"), $("itemVariantsOverlay"), $("purchaseBillOverlay"), $("purchaseBillFormOverlay"), $("purchaseBillDetailOverlay"), $("pbPayOverlay")].forEach(ov => {
+  [$("settingsOverlay"), $("historyOverlay"), $("paymentOverlay"), $("receiptOverlay"), $("standbyOverlay"), $("reviewOverlay"), $("voiceConfirmOverlay"), $("variantPickerOverlay"), $("itemVariantsOverlay"), $("purchaseBillOverlay"), $("purchaseBillFormOverlay"), $("purchaseBillDetailOverlay"), $("pbPayOverlay"), $("stockLedgerOverlay"), $("stockLedgerDetailOverlay")].forEach(ov => {
     ov.addEventListener("click", (e)=>{ if(e.target === ov) ov.classList.remove("show"); });
   });
 
@@ -4235,6 +4374,41 @@
     $("trialWarningBar").style.display = "none";
   });
 
+  function getOrCreateDeviceId(){
+    let id = null;
+    try{ id = localStorage.getItem(STORAGE_KEY_DEVICEID); }catch(e){}
+    if(!id){
+      id = Date.now().toString(36) + Math.random().toString(36).slice(2,10);
+      try{ localStorage.setItem(STORAGE_KEY_DEVICEID, id); }catch(e){}
+    }
+    return id;
+  }
+
+  // Anonymous, once-a-day usage ping — lets you see total installs and how
+  // many opened the app today, just by browsing the Firebase Console at
+  // app_usage/ (every device that ever opened it) and
+  // app_usage_daily/<YYYY-MM-DD>/ (devices active that day). No dashboard
+  // needed: the number of children under each node IS the count. Stores
+  // nothing personal — just a random per-device id and two dates.
+  async function pingUsage(){
+    try{
+      const today = todayDateOnly();
+      let last = null;
+      try{ last = localStorage.getItem(STORAGE_KEY_LAST_USAGE_PING); }catch(e){}
+      if(last === today) return; // already pinged today, skip the network call
+      const deviceId = getOrCreateDeviceId();
+      let firstRun = null;
+      try{ firstRun = localStorage.getItem("kadai:firstrun"); }catch(e){}
+      const firstSeen = firstRun ? new Date(parseInt(firstRun,10)).toISOString().slice(0,10) : today;
+      const db = await ensureFirebaseLoaded();
+      await db.ref("app_usage/" + deviceId).update({ firstSeen, lastSeen: today, lastSeenAt: Date.now() });
+      await db.ref("app_usage_daily/" + today + "/" + deviceId).set(true);
+      try{ localStorage.setItem(STORAGE_KEY_LAST_USAGE_PING, today); }catch(e){}
+    }catch(e){
+      // Offline or blocked — silently skip; tomorrow's ping will try again.
+    }
+  }
+
   $("lockSubmitBtn").addEventListener("click", async () => {
     const code = $("lockCodeInput").value.trim();
     if(!code){
@@ -4283,6 +4457,7 @@
     // if no Sync Code is set.
     checkAutoBackupDue();
     checkTrialWarning();
+    pingUsage();
   }
 })();
 
