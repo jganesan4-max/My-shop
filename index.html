@@ -251,6 +251,13 @@
   }
   .pb-payment-row .pb-pay-date{color:var(--chalk-dim);font-size:14px;}
   .pb-payment-row .pb-pay-amt{color:var(--ok);font-weight:800;font-size:16.5px;}
+  .pb-row-trader{font-size:16px;font-weight:700;color:var(--chalk);}
+  .pb-row-meta{font-size:13px;color:#ffd479;margin-top:3px;font-weight:600;}
+  .pb-status-badge{display:inline-block;margin-top:7px;font-size:12.5px;font-weight:800;padding:4px 10px;border-radius:20px;}
+  .pb-status-badge.pb-paid{background:rgba(111,191,115,0.9);color:#0c2b0e;}
+  .pb-status-badge.pb-partial{background:rgba(255,196,64,0.95);color:#402b00;}
+  .pb-status-badge.pb-unpaid{background:rgba(233,76,76,0.95);color:#fff;}
+  .pb-balance-badge{margin-top:6px;font-size:13px;font-weight:800;color:#fff;background:rgba(224,82,82,0.95);padding:3px 10px;border-radius:8px;display:inline-block;}
 
   .pie-wrap{display:flex;align-items:center;gap:16px;padding:8px 4px 16px;}
   .pie-legend{flex:1;display:flex;flex-direction:column;gap:6px;}
@@ -703,7 +710,7 @@
   <div class="sheet">
     <div class="sheet-handle"></div>
     <div class="sheet-title">பில் விவரம் <button class="icon-btn" id="closePurchaseBillDetail">✕</button></div>
-    <div class="divider-note" id="pbDetailMeta" style="margin-top:0;"></div>
+    <div id="pbDetailMeta" class="pb-row-meta" style="margin-top:0;font-size:14px;"></div>
     <table class="review-table">
       <thead>
         <tr><th>பொருள்</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">தொகை</th></tr>
@@ -3827,15 +3834,18 @@
     const sorted = purchaseBills.slice().sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
     listEl.innerHTML = sorted.map(pb => {
       const bal = purchaseBillBalance(pb);
-      const statusText = bal <= 0.001 ? "✅ முழுவதும் செலுத்தப்பட்டது" : (purchaseBillPaid(pb) > 0 ? "🟡 பகுதி செலுத்தப்பட்டது" : "🔴 செலுத்தப்படவில்லை");
+      const paid = purchaseBillPaid(pb);
+      const statusClass = bal <= 0.001 ? "pb-paid" : (paid > 0 ? "pb-partial" : "pb-unpaid");
+      const statusText = bal <= 0.001 ? "✅ முழுவதும் செலுத்தப்பட்டது" : (paid > 0 ? "🟡 பகுதி செலுத்தப்பட்டது" : "🔴 செலுத்தப்படவில்லை");
       return `<div class="ledger-row pb-row" data-id="${escapeHtml(pb.id)}" style="cursor:pointer;">
         <div class="info">
-          <div>${escapeHtml(pb.traderName || "பெயர் இல்லை")} <span class="meta">Invoice: ${escapeHtml(pb.invoiceNo || "-")} · ${escapeHtml(pb.date || "")}</span></div>
-          <span class="meta">${statusText}</span>
+          <div class="pb-row-trader">${escapeHtml(pb.traderName || "பெயர் இல்லை")}</div>
+          <div class="pb-row-meta">Invoice: ${escapeHtml(pb.invoiceNo || "-")} · ${escapeHtml(pb.date || "")}</div>
+          <span class="pb-status-badge ${statusClass}">${statusText}</span>
         </div>
         <div style="text-align:right;">
           <div class="amt" style="color:var(--gold);">₹${(parseFloat(pb.billTotal)||0).toFixed(0)}</div>
-          ${bal > 0.001 ? '<div class="meta" style="color:var(--danger);">நிலுவை ₹' + bal.toFixed(0) + '</div>' : ''}
+          ${bal > 0.001 ? '<div class="pb-balance-badge">நிலுவை ₹' + bal.toFixed(0) + '</div>' : ''}
         </div>
       </div>`;
     }).join("");
