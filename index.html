@@ -653,8 +653,10 @@
       <input type="text" id="variantLabelInput" placeholder="எ.கா. 100gm">
       <input type="number" id="variantPriceInput" inputmode="decimal" placeholder="விலை ₹" style="flex:0 0 110px;">
     </div>
+    <div class="field-label" style="margin-top:8px;">ஆரம்ப இருப்பு (Optional — வேண்டுமெனில் மட்டும்)</div>
+    <input type="number" id="variantStockInput" inputmode="decimal" placeholder="எ.கா. 15">
     <button class="save-btn" id="addVariantBtn" style="margin-top:8px;">+ சேர்</button>
-    <div class="divider-note">💡 இந்த பொருளை பில்லில் தட்டும்போது, இங்கு சேர்க்கப்பட்ட விருப்பங்கள் பட்டியலாக காட்டப்பட்டு, தேவையானதை தேர்வு செய்யலாம்.</div>
+    <div class="divider-note">💡 இந்த பொருளை பில்லில் தட்டும்போது, இங்கு சேர்க்கப்பட்ட விருப்பங்கள் பட்டியலாக காட்டப்பட்டு, தேவையானதை தேர்வு செய்யலாம். ஒவ்வொரு விருப்பத்தின் இருப்பும் (Small/Medium/Big) தனித்தனியாக கண்காணிக்கப்படும் — விற்கும்போது அந்த விருப்பத்தின் இருப்பு மட்டும் குறையும்.</div>
   </div>
 </div>
 
@@ -795,7 +797,7 @@
     <div class="sheet-handle"></div>
     <div class="sheet-title">📊 இருப்பு வரலாறு (Stock) <button class="icon-btn" id="closeStockLedger">✕</button></div>
     <div id="stockLedgerList" style="margin-top:6px;"></div>
-    <div class="divider-note">💡 📦 கொள்முதல் பில் சேர்க்கும்போது அந்த பொருள் பெயர் இங்கு உள்ள பொருட்கள் பட்டியலில் இருந்தால், அதன் இருப்பு தானாக கூடும். பில் விற்கும்போது தானாக குறையும். ஒரு பொருளை தட்டி முழு வரலாற்றையும் பார்க்கலாம்.</div>
+    <div class="divider-note">💡 📦 கொள்முதல் பில் சேர்க்கும்போது அந்த பொருள் பெயர் இங்கு உள்ள பொருட்கள் பட்டியலில் இருந்தால், அதன் இருப்பு தானாக கூடும். (விருப்பங்கள் உள்ள பொருளுக்கு "பொருள் பெயர் + விருப்பம்" என தட்டச்சு செய்யவும் — எ.கா. "சோப்பு Small" — அந்த விருப்பத்தின் இருப்பு மட்டும் கூடும்.) பில் விற்கும்போது தானாக குறையும். ஒரு பொருளை தட்டி முழு வரலாற்றையும் பார்க்கலாம்.</div>
   </div>
 </div>
 
@@ -1314,59 +1316,100 @@
     const r = roundStock(n);
     return Number.isInteger(r) ? String(r) : r.toFixed(2);
   }
+  // A plain item is tracked under its own id; a variant (e.g. Soap→Small)
+  // is tracked under "<itemId>::<variantLabel>" so its stock, ledger
+  // history, sale deductions, and purchase-bill matching all stay
+  // completely separate from the item's other variants.
+  function stockKey(itemId, variantLabel){
+    return variantLabel ? (itemId + "::" + variantLabel) : itemId;
+  }
 
   function applyStockForBill(newItemsSnapshot, oldItemsSnapshot, billNo){
     const LOW_STOCK_THRESHOLD = 5;
-    const oldMap = {};
+    const oldMap = {}; // stockKey -> { itemId, variantLabel, qty }
     (oldItemsSnapshot || []).forEach(it => {
-      if(it.itemId) oldMap[it.itemId] = (oldMap[it.itemId] || 0) + it.qty;
+      if(!it.itemId) return;
+      const key = stockKey(it.itemId, it.variantLabel);
+      if(!oldMap[key]) oldMap[key] = { itemId: it.itemId, variantLabel: it.variantLabel || null, qty: 0 };
+      oldMap[key].qty += it.qty;
     });
     const newMap = {};
     newItemsSnapshot.forEach(it => {
-      if(it.itemId) newMap[it.itemId] = (newMap[it.itemId] || 0) + it.qty;
+      if(!it.itemId) return;
+      const key = stockKey(it.itemId, it.variantLabel);
+      if(!newMap[key]) newMap[key] = { itemId: it.itemId, variantLabel: it.variantLabel || null, qty: 0 };
+      newMap[key].qty += it.qty;
     });
-    const allIds = new Set([...Object.keys(oldMap), ...Object.keys(newMap)]);
+    const allKeys = new Set([...Object.keys(oldMap), ...Object.keys(newMap)]);
     const lowStockNames = [];
     let changed = false;
-    allIds.forEach(id => {
-      const catalogItem = items.find(i => i.id === id);
-      if(!catalogItem || typeof catalogItem.stock !== "number") return;
-      const oldQty = oldMap[id] || 0;
-      const newQty = newMap[id] || 0;
+    allKeys.forEach(key => {
+      const ref = newMap[key] || oldMap[key];
+      const catalogItem = items.find(i => i.id === ref.itemId);
+      if(!catalogItem) return;
+      const oldQty = (oldMap[key] || {}).qty || 0;
+      const newQty = (newMap[key] || {}).qty || 0;
       const delta = newQty - oldQty; // +ve = more sold now, -ve = units returned
       if(delta === 0) return;
-      catalogItem.stock = roundStock(catalogItem.stock - delta);
-      addStockLedgerEntry(id, delta > 0 ? "sale" : "return", Math.abs(delta), "பில் #" + billNo);
+      let target, displayName;
+      if(ref.variantLabel){
+        target = (catalogItem.variants || []).find(v => v.label === ref.variantLabel);
+        displayName = catalogItem.name + " — " + ref.variantLabel;
+      } else {
+        target = catalogItem;
+        displayName = catalogItem.name;
+      }
+      if(!target || typeof target.stock !== "number") return;
+      target.stock = roundStock(target.stock - delta);
+      addStockLedgerEntry(key, delta > 0 ? "sale" : "return", Math.abs(delta), "பில் #" + billNo);
       changed = true;
-      if(catalogItem.stock <= LOW_STOCK_THRESHOLD){
-        lowStockNames.push(catalogItem.name + " (" + formatStock(catalogItem.stock) + ")");
+      if(target.stock <= LOW_STOCK_THRESHOLD){
+        lowStockNames.push(displayName + " (" + formatStock(target.stock) + ")");
       }
     });
     if(changed) saveItems();
     return lowStockNames;
   }
 
-  // Applies a newly-created Purchase Bill's items as incoming stock: any
-  // line whose name matches an existing catalog item (case/space
-  // insensitive) increases that item's stock and starts tracking it if it
-  // wasn't already. Items with no matching catalog entry are skipped and
-  // their names returned so the caller can let the shop owner know.
-  // Only called for brand-new bills — editing an existing bill never
-  // re-applies stock, to avoid double-counting.
+  // Applies a newly-created Purchase Bill's items as incoming stock. Each
+  // line is matched two ways: first against "<item name> <variant label>"
+  // (e.g. "Soap Small") so a specific variant's own stock is credited;
+  // if that doesn't match anything, against the plain item name, which
+  // credits the item's own base stock. Either way tracking starts
+  // automatically if it hadn't already. Lines matching neither are
+  // skipped and returned so the caller can flag them. Only called for
+  // brand-new bills — editing an existing bill never re-applies stock.
   function applyPurchaseBillToStock(pb){
     const unmatched = [];
     let changed = false;
     (pb.items || []).forEach(line => {
       if(!line.name || !line.qty) return;
-      const target = String(line.name).trim().toLowerCase();
-      const catalogItem = items.find(i => String(i.name).trim().toLowerCase() === target);
-      if(!catalogItem){
-        unmatched.push(line.name);
-        return;
+      const target = String(line.name).trim().toLowerCase().replace(/\s+/g, " ");
+      const qty = parseFloat(line.qty) || 0;
+      let matched = false;
+      for(const catalogItem of items){
+        if(matched) break;
+        (catalogItem.variants || []).forEach(v => {
+          if(matched) return;
+          const combo = (catalogItem.name + " " + v.label).trim().toLowerCase().replace(/\s+/g, " ");
+          if(combo === target){
+            v.stock = roundStock((typeof v.stock === "number" ? v.stock : 0) + qty);
+            addStockLedgerEntry(stockKey(catalogItem.id, v.label), "purchase", qty, "கொள்முதல்: " + (pb.traderName || "") + (pb.invoiceNo ? " · Invoice " + pb.invoiceNo : "") + " · " + (pb.date || ""));
+            changed = true;
+            matched = true;
+          }
+        });
       }
-      catalogItem.stock = roundStock((typeof catalogItem.stock === "number" ? catalogItem.stock : 0) + (parseFloat(line.qty) || 0));
-      addStockLedgerEntry(catalogItem.id, "purchase", parseFloat(line.qty) || 0, "கொள்முதல்: " + (pb.traderName || "") + (pb.invoiceNo ? " · Invoice " + pb.invoiceNo : "") + " · " + (pb.date || ""));
-      changed = true;
+      if(!matched){
+        const catalogItem = items.find(i => String(i.name).trim().toLowerCase() === target);
+        if(catalogItem){
+          catalogItem.stock = roundStock((typeof catalogItem.stock === "number" ? catalogItem.stock : 0) + qty);
+          addStockLedgerEntry(catalogItem.id, "purchase", qty, "கொள்முதல்: " + (pb.traderName || "") + (pb.invoiceNo ? " · Invoice " + pb.invoiceNo : "") + " · " + (pb.date || ""));
+          changed = true;
+          matched = true;
+        }
+      }
+      if(!matched) unmatched.push(line.name);
     });
     if(changed) saveItems();
     return unmatched;
@@ -1887,10 +1930,12 @@
   // "Biscuit (Big)"). Keeps itemId pointing at the BASE catalog item so
   // stock tracking still deducts correctly — only name/price differ, and
   // those come from the chosen variant, not the item's own base price.
-  function addVariantToBill(baseItemId, name, price, qty){
-    const existing = bill.find(b => b.itemId === baseItemId && b.name === name && b.price === price);
+  // variantLabel (e.g. "Big") is kept alongside so stock deducts from
+  // that specific variant's own count, not the item's shared stock.
+  function addVariantToBill(baseItemId, name, price, qty, variantLabel){
+    const existing = bill.find(b => b.itemId === baseItemId && b.name === name && b.price === price && (b.variantLabel || null) === (variantLabel || null));
     if(existing){ existing.qty += qty; }
-    else{ bill.push({itemId: baseItemId, name, price, qty}); }
+    else{ bill.push({itemId: baseItemId, name, price, qty, variantLabel: variantLabel || null}); }
     renderBill();
   }
 
@@ -2264,7 +2309,7 @@
         const v = item.variants[parseInt(row.dataset.idx)];
         $("variantPickerOverlay").classList.remove("show");
         qtyPickerQueue = [];
-        openQtyPickerFor({ id: item.id, isVariant: true, name: item.name + " (" + v.label + ")", price: v.price });
+        openQtyPickerFor({ id: item.id, isVariant: true, variantLabel: v.label, name: item.name + " (" + v.label + ")", price: v.price });
       });
     });
     $("variantPickerOverlay").classList.add("show");
@@ -2293,23 +2338,28 @@
     if(!qtyPickerCurrentItem || isNaN(qty) || qty <= 0) return;
     const item = qtyPickerCurrentItem;
 
-    // Stock check: applies to both plain catalog items and variants,
-    // since both carry the BASE item's id. Custom/ad-hoc items (id=null)
-    // aren't stock-tracked, so nothing to check there.
+    // Stock check: for a variant, checks that variant's own stock; for a
+    // plain catalog item, checks the item's stock. Custom/ad-hoc items
+    // (id=null) aren't stock-tracked, so nothing to check there.
     if(item.id){
       const catalogItem = items.find(i => i.id === item.id);
-      if(catalogItem && typeof catalogItem.stock === "number"){
-        const alreadyInBill = bill.filter(b => b.itemId === item.id).reduce((s,b)=>s+b.qty,0);
-        const remaining = catalogItem.stock - alreadyInBill;
-        if(remaining <= 0){
-          const ok = confirm(catalogItem.name + " — இருப்பு இல்லை (தற்போதைய இருப்பு: " + formatStock(catalogItem.stock) + "). தொடர்ந்து சேர்க்கவா?");
-          if(!ok) return;
+      if(catalogItem){
+        const stockTarget = item.isVariant
+          ? (catalogItem.variants || []).find(v => v.label === item.variantLabel)
+          : catalogItem;
+        if(stockTarget && typeof stockTarget.stock === "number"){
+          const alreadyInBill = bill.filter(b => b.itemId === item.id && (b.variantLabel || null) === (item.variantLabel || null)).reduce((s,b)=>s+b.qty,0);
+          const remaining = stockTarget.stock - alreadyInBill;
+          if(remaining <= 0){
+            const ok = confirm(item.name + " — இருப்பு இல்லை (தற்போதைய இருப்பு: " + formatStock(stockTarget.stock) + "). தொடர்ந்து சேர்க்கவா?");
+            if(!ok) return;
+          }
         }
       }
     }
 
     if(item.isVariant){
-      addVariantToBill(item.id, item.name, item.price, qty);
+      addVariantToBill(item.id, item.name, item.price, qty, item.variantLabel);
     } else if(item.id){
       addToBill(item.id, qty);
     } else {
@@ -3776,6 +3826,7 @@
     $("itemVariantsTitle").childNodes[0].textContent = it.name + " — விருப்பங்கள் ";
     $("variantLabelInput").value = "";
     $("variantPriceInput").value = "";
+    $("variantStockInput").value = "";
     renderItemVariantsList();
     $("itemVariantsOverlay").classList.add("show");
   }
@@ -3787,14 +3838,19 @@
       listEl.innerHTML = '<div class="divider-note" style="margin-top:0;">இன்னும் விருப்பங்கள் சேர்க்கப்படவில்லை.</div>';
       return;
     }
-    listEl.innerHTML = it.variants.map((v, idx) => `
-      <div class="existing-item-row">
-        <div class="info">${escapeHtml(v.label)} — <b>₹${v.price}</b></div>
+    listEl.innerHTML = it.variants.map((v, idx) => {
+      const stockText = typeof v.stock === "number" ? ` <span style="color:var(--ok);">(இருப்பு: ${formatStock(v.stock)})</span>` : "";
+      return `<div class="existing-item-row">
+        <div class="info">${escapeHtml(v.label)} — <b>₹${v.price}</b>${stockText}</div>
         <div class="row-actions">
+          <button class="mini-btn restock-variant-btn" data-idx="${idx}" title="இருப்பு சேர்">📦</button>
           <button class="mini-btn del-btn" data-idx="${idx}">🗑️</button>
         </div>
-      </div>
-    `).join("");
+      </div>`;
+    }).join("");
+    listEl.querySelectorAll(".restock-variant-btn").forEach(btn=>{
+      btn.addEventListener("click", ()=> promptRestockVariant(itemVariantsCurrentId, parseInt(btn.dataset.idx)));
+    });
     listEl.querySelectorAll(".del-btn").forEach(btn=>{
       btn.addEventListener("click", async ()=>{
         const item = items.find(i=>i.id===itemVariantsCurrentId);
@@ -3808,20 +3864,46 @@
     });
   }
 
+  function promptRestockVariant(itemId, variantIdx){
+    const it = items.find(i=>i.id===itemId);
+    const v = it && it.variants && it.variants[variantIdx];
+    if(!v) return;
+    const label = it.name + " — " + v.label;
+    const input = prompt("சேர்க்க வேண்டிய இருப்பு எண்ணிக்கை — " + label, "");
+    if(input === null) return;
+    const qty = parseFloat(input);
+    if(isNaN(qty) || qty <= 0){
+      setStatus("சரியான எண்ணிக்கை இடவும்");
+      return;
+    }
+    v.stock = roundStock((typeof v.stock === "number" ? v.stock : 0) + qty);
+    saveItems();
+    addStockLedgerEntry(stockKey(itemId, v.label), "purchase", qty, "இருப்பு சேர்க்கப்பட்டது");
+    renderItemVariantsList();
+    renderItems();
+    setStatus(label + " இருப்பில் " + qty + " சேர்க்கப்பட்டது. புதிய இருப்பு: " + formatStock(v.stock));
+  }
+
   $("addVariantBtn").addEventListener("click", async ()=>{
     const it = items.find(i=>i.id===itemVariantsCurrentId);
     if(!it) return;
     const label = $("variantLabelInput").value.trim();
     const price = parseFloat($("variantPriceInput").value);
+    const stockInput = $("variantStockInput").value.trim();
     if(!label || isNaN(price) || price <= 0){
       setStatus("விருப்ப பெயரும் விலையும் சரியாக இடவும்");
       return;
     }
     if(!it.variants) it.variants = [];
-    it.variants.push({label, price});
+    const variant = {label, price};
+    if(stockInput !== "" && !isNaN(parseFloat(stockInput))){
+      variant.stock = roundStock(parseFloat(stockInput));
+    }
+    it.variants.push(variant);
     await saveItems();
     $("variantLabelInput").value = "";
     $("variantPriceInput").value = "";
+    $("variantStockInput").value = "";
     renderItemVariantsList();
     renderItems();
     renderExistingItems();
@@ -4132,7 +4214,7 @@
   function pbItemRowHtml(idx, item){
     item = item || {name:"", qty:"", rate:""};
     return `<div class="pb-item-row" data-idx="${idx}" style="background:var(--board);border:1px solid rgba(245,241,227,0.15);border-radius:10px;padding:8px;margin-top:8px;">
-      <input type="text" class="pb-item-name" placeholder="பொருள் பெயர்" style="width:100%;margin-bottom:6px;" value="${escapeHtml(item.name)}">
+      <input type="text" class="pb-item-name" placeholder="பொருள் பெயர் (எ.கா. சோப்பு Small)" style="width:100%;margin-bottom:6px;" value="${escapeHtml(item.name)}">
       <div class="field-row">
         <input type="number" class="pb-item-qty" placeholder="Qty" inputmode="decimal" style="flex:1;" value="${item.qty !== undefined && item.qty !== "" ? item.qty : ""}">
         <input type="number" class="pb-item-rate" placeholder="Rate ₹" inputmode="decimal" style="flex:1;" value="${item.rate !== undefined && item.rate !== "" ? item.rate : ""}">
@@ -4377,22 +4459,41 @@
   });
 
   // ---- Stock Ledger view: current position + full history per item ----
+  // Builds one row per trackable stock target: a plain item (if it has its
+  // own numeric stock) and/or each of its variants that has its own
+  // numeric stock — so "Soap — Small", "Soap — Big" etc. show as separate
+  // rows with separate counts and separate histories.
+  function collectStockTargets(){
+    const targets = [];
+    items.forEach(it => {
+      if(typeof it.stock === "number"){
+        targets.push({ key: it.id, name: it.name, stock: it.stock });
+      }
+      (it.variants || []).forEach(v => {
+        if(typeof v.stock === "number"){
+          targets.push({ key: stockKey(it.id, v.label), name: it.name + " — " + v.label, stock: v.stock });
+        }
+      });
+    });
+    return targets.sort((a,b) => a.name.localeCompare(b.name));
+  }
+
   function renderStockLedgerList(){
-    const tracked = items.filter(it => typeof it.stock === "number").sort((a,b) => a.name.localeCompare(b.name));
+    const tracked = collectStockTargets();
     const listEl = $("stockLedgerList");
     if(tracked.length === 0){
-      listEl.innerHTML = '<div class="standby-empty">இன்னும் எந்த பொருளுக்கும் இருப்பு கண்காணிக்கப்படவில்லை. Settings-ல் ஒரு பொருளுக்கு "இருப்பு" எண்ணை நிரப்பினால், அல்லது 📦 கொள்முதல் பில்-ல் அந்த பொருள் பெயரை சேர்த்தால், இங்கு தானாக தெரியும்.</div>';
+      listEl.innerHTML = '<div class="standby-empty">இன்னும் எந்த பொருளுக்கும் இருப்பு கண்காணிக்கப்படவில்லை. Settings-ல் ஒரு பொருளுக்கு (அல்லது அதன் விருப்பத்திற்கு) "இருப்பு" எண்ணை நிரப்பினால், அல்லது 📦 கொள்முதல் பில்-ல் அந்த பொருள் பெயரை சேர்த்தால், இங்கு தானாக தெரியும்.</div>';
       return;
     }
-    listEl.innerHTML = tracked.map(it => {
-      const low = it.stock <= 5;
-      return `<div class="stock-item-row" data-id="${escapeHtml(it.id)}">
-        <span class="si-name">${escapeHtml(it.name)}</span>
-        <span class="si-qty${low ? ' low' : ''}">${formatStock(it.stock)}</span>
+    listEl.innerHTML = tracked.map(t => {
+      const low = t.stock <= 5;
+      return `<div class="stock-item-row" data-key="${escapeHtml(t.key)}">
+        <span class="si-name">${escapeHtml(t.name)}</span>
+        <span class="si-qty${low ? ' low' : ''}">${formatStock(t.stock)}</span>
       </div>`;
     }).join("");
     listEl.querySelectorAll(".stock-item-row").forEach(row => {
-      row.addEventListener("click", () => openStockLedgerDetail(row.dataset.id));
+      row.addEventListener("click", () => openStockLedgerDetail(row.dataset.key));
     });
   }
 
@@ -4411,12 +4512,25 @@
     return type === "sale" ? "−" : "+";
   }
 
-  function openStockLedgerDetail(itemId){
+  function openStockLedgerDetail(key){
+    const sepIdx = key.indexOf("::");
+    const itemId = sepIdx === -1 ? key : key.slice(0, sepIdx);
+    const variantLabel = sepIdx === -1 ? null : key.slice(sepIdx + 2);
     const it = items.find(i => i.id === itemId);
     if(!it) return;
-    $("stockDetailTitle").textContent = it.name + " — இருப்பு வரலாறு";
-    $("stockDetailCurrent").textContent = formatStock(typeof it.stock === "number" ? it.stock : 0);
-    const entries = (stockLedger[itemId] || []).slice().reverse();
+    let displayName, currentStock;
+    if(variantLabel){
+      const v = (it.variants || []).find(v => v.label === variantLabel);
+      if(!v) return;
+      displayName = it.name + " — " + variantLabel;
+      currentStock = typeof v.stock === "number" ? v.stock : 0;
+    } else {
+      displayName = it.name;
+      currentStock = typeof it.stock === "number" ? it.stock : 0;
+    }
+    $("stockDetailTitle").textContent = displayName + " — இருப்பு வரலாறு";
+    $("stockDetailCurrent").textContent = formatStock(currentStock);
+    const entries = (stockLedger[key] || []).slice().reverse();
     $("stockDetailList").innerHTML = entries.length
       ? entries.map(e => `<div class="stock-move-row ${stockMoveClass(e.type)}">
           <div class="smr-info">
