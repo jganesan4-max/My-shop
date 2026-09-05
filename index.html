@@ -286,6 +286,14 @@
   .stock-item-row .si-name{font-weight:700;color:var(--chalk);}
   .stock-item-row .si-qty{font-weight:800;font-size:16px;color:var(--ok);}
   .stock-item-row .si-qty.low{color:var(--danger);}
+  .pb-name-suggest{
+    position:absolute;left:8px;right:8px;top:38px;z-index:20;
+    background:#132a1c;border:1px solid rgba(245,241,227,0.25);border-radius:10px;
+    max-height:180px;overflow-y:auto;box-shadow:0 6px 18px rgba(0,0,0,0.4);
+  }
+  .pb-name-suggest-row{padding:10px 12px;font-size:15px;border-bottom:1px solid rgba(245,241,227,0.08);}
+  .pb-name-suggest-row:last-child{border-bottom:none;}
+  .pb-name-suggest-row:active{background:rgba(242,176,59,0.18);}
 
   .pie-wrap{display:flex;align-items:center;gap:16px;padding:8px 4px 16px;}
   .pie-legend{flex:1;display:flex;flex-direction:column;gap:6px;}
@@ -712,7 +720,6 @@
       <span>பொருட்கள் (Stock, Qty, Rate)</span>
     </div>
     <div id="pbItemsList"></div>
-    <datalist id="pbItemNamesDatalist"></datalist>
     <button class="btn btn-history" id="pbAddItemRowBtn" style="width:100%;margin-top:8px;">+ பொருள் வரிசை சேர்</button>
 
     <div class="review-total-row" style="margin-top:16px;">
@@ -4244,8 +4251,9 @@
 
   function pbItemRowHtml(idx, item){
     item = item || {name:"", qty:"", rate:""};
-    return `<div class="pb-item-row" data-idx="${idx}" style="background:var(--board);border:1px solid rgba(245,241,227,0.15);border-radius:10px;padding:8px;margin-top:8px;">
-      <input type="text" class="pb-item-name" list="pbItemNamesDatalist" placeholder="பொருள் பெயர் (எ.கா. சோப்பு Small)" style="width:100%;margin-bottom:6px;" value="${escapeHtml(item.name)}">
+    return `<div class="pb-item-row" data-idx="${idx}" style="background:var(--board);border:1px solid rgba(245,241,227,0.15);border-radius:10px;padding:8px;margin-top:8px;position:relative;">
+      <input type="text" class="pb-item-name" autocomplete="off" placeholder="பொருள் பெயர் (தட்டச்சு செய்யும்போது பொருத்தமான பெயர் கீழே தெரியும்)" style="width:100%;margin-bottom:6px;" value="${escapeHtml(item.name)}">
+      <div class="pb-name-suggest" style="display:none;"></div>
       <div class="field-row">
         <input type="number" class="pb-item-qty" placeholder="Qty" inputmode="decimal" style="flex:1;" value="${item.qty !== undefined && item.qty !== "" ? item.qty : ""}">
         <input type="number" class="pb-item-rate" placeholder="Rate ₹" inputmode="decimal" style="flex:1;" value="${item.rate !== undefined && item.rate !== "" ? item.rate : ""}">
@@ -4263,10 +4271,41 @@
     pbRecomputeTotal();
   }
 
+  // Custom suggestion dropdown for the item-name box — used instead of a
+  // native <datalist>, which is unreliable on Android/mobile Chrome (the
+  // little dropdown arrow shows but the list often never actually opens).
+  // Matches anywhere in the name (not just the start), case-insensitive,
+  // so typing a couple of Tamil letters like "சோ" surfaces "சோப் ஆயில்"
+  // too, not just names that literally start with it.
+  function pbShowNameSuggestions(input, suggestBox){
+    const q = input.value.trim().toLowerCase();
+    if(!q){ suggestBox.style.display = "none"; return; }
+    const matches = stockMatchableNames().filter(n => n.toLowerCase().includes(q)).slice(0, 8);
+    if(matches.length === 0){ suggestBox.style.display = "none"; return; }
+    suggestBox.innerHTML = matches.map(n => `<div class="pb-name-suggest-row">${escapeHtml(n)}</div>`).join("");
+    suggestBox.querySelectorAll(".pb-name-suggest-row").forEach(row => {
+      // mousedown (not click) fires before the input's blur hides the box,
+      // so the tap registers even though the keyboard is closing.
+      row.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        input.value = row.textContent;
+        suggestBox.style.display = "none";
+      });
+    });
+    suggestBox.style.display = "block";
+  }
+
   function pbBindItemRowEvents(){
     $("pbItemsList").querySelectorAll(".pb-item-row").forEach(row => {
       if(row.dataset.bound) return;
       row.dataset.bound = "1";
+      const nameInput = row.querySelector(".pb-item-name");
+      const suggestBox = row.querySelector(".pb-name-suggest");
+      nameInput.addEventListener("input", () => pbShowNameSuggestions(nameInput, suggestBox));
+      nameInput.addEventListener("focus", () => pbShowNameSuggestions(nameInput, suggestBox));
+      nameInput.addEventListener("blur", () => {
+        setTimeout(() => { suggestBox.style.display = "none"; }, 150);
+      });
       row.querySelectorAll(".pb-item-qty, .pb-item-rate").forEach(inp => {
         inp.addEventListener("input", () => pbRecomputeTotal());
       });
@@ -4319,7 +4358,6 @@
   function openPurchaseBillForm(pb){
     pbEditingId = pb ? pb.id : null;
     $("pbFormTitle").childNodes[0].textContent = (pb ? "கொள்முதல் பில் திருத்த" : "புதிய கொள்முதல் பில்") + " ";
-    $("pbItemNamesDatalist").innerHTML = stockMatchableNames().map(n => `<option value="${escapeHtml(n)}">`).join("");
     $("pbTraderName").value = pb ? (pb.traderName || "") : "";
     $("pbInvoiceNo").value = pb ? (pb.invoiceNo || "") : "";
     $("pbDate").value = pb ? (pb.date || todayDateOnly()) : todayDateOnly();
