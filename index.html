@@ -712,6 +712,7 @@
       <span>பொருட்கள் (Stock, Qty, Rate)</span>
     </div>
     <div id="pbItemsList"></div>
+    <datalist id="pbItemNamesDatalist"></datalist>
     <button class="btn btn-history" id="pbAddItemRowBtn" style="width:100%;margin-top:8px;">+ பொருள் வரிசை சேர்</button>
 
     <div class="review-total-row" style="margin-top:16px;">
@@ -765,6 +766,7 @@
       <div class="balance-label">நிலுவை (Balance)</div>
       <div class="balance-amount" id="pbDetailBalance">₹0</div>
     </div>
+    <div id="pbDetailStockNote" style="margin-top:10px;"></div>
     <button class="save-btn" id="pbDetailAddPaymentBtn" style="margin-top:14px;">➕ பணம் செலுத்தியது சேர்</button>
     <div style="display:flex;gap:10px;margin-top:10px;">
       <button class="btn btn-history" id="pbDetailEditBtn" style="flex:1;">✏️ திருத்த</button>
@@ -1379,10 +1381,24 @@
   // automatically if it hadn't already. Lines matching neither are
   // skipped and returned so the caller can flag them. Only called for
   // brand-new bills — editing an existing bill never re-applies stock.
-  function applyPurchaseBillToStock(pb){
+  // Applies a Purchase Bill's items as incoming stock. Each line is
+  // matched two ways: first against "<item name> <variant label>" (e.g.
+  // "Soap Small") so a specific variant's own stock is credited; if that
+  // doesn't match anything, against the plain item name, which credits
+  // the item's own base stock. Either way tracking starts automatically
+  // if it hadn't already.
+  //
+  // skipIndices lets a RETRY skip lines that were already successfully
+  // applied earlier (so fixing a typo and retrying never double-counts
+  // the lines that matched the first time). Returns { unmatched, matchedIndices }
+  // — matchedIndices is merged into pb.stockAppliedIndices by the caller.
+  function applyPurchaseBillToStock(pb, skipIndices){
+    skipIndices = skipIndices || [];
     const unmatched = [];
+    const matchedIndices = [];
     let changed = false;
-    (pb.items || []).forEach(line => {
+    (pb.items || []).forEach((line, idx) => {
+      if(skipIndices.includes(idx)) return;
       if(!line.name || !line.qty) return;
       const target = String(line.name).trim().toLowerCase().replace(/\s+/g, " ");
       const qty = parseFloat(line.qty) || 0;
@@ -1409,10 +1425,25 @@
           matched = true;
         }
       }
-      if(!matched) unmatched.push(line.name);
+      if(matched) matchedIndices.push(idx);
+      else unmatched.push(line.name);
     });
     if(changed) saveItems();
-    return unmatched;
+    return { unmatched, matchedIndices };
+  }
+
+  // Every stock-matchable name in the shop: plain item names, plus
+  // "item variant" combos — used both for the Purchase Bill item-name
+  // datalist (so the shop owner can pick the exact spelling instead of
+  // typing it) and nowhere else. Kept fresh on every call since items
+  // change often.
+  function stockMatchableNames(){
+    const names = [];
+    items.forEach(it => {
+      names.push(it.name);
+      (it.variants || []).forEach(v => names.push(it.name + " " + v.label));
+    });
+    return names;
   }
 
   // Lists customers who: have an outstanding balance, have a phone number
@@ -4214,7 +4245,7 @@
   function pbItemRowHtml(idx, item){
     item = item || {name:"", qty:"", rate:""};
     return `<div class="pb-item-row" data-idx="${idx}" style="background:var(--board);border:1px solid rgba(245,241,227,0.15);border-radius:10px;padding:8px;margin-top:8px;">
-      <input type="text" class="pb-item-name" placeholder="பொருள் பெயர் (எ.கா. சோப்பு Small)" style="width:100%;margin-bottom:6px;" value="${escapeHtml(item.name)}">
+      <input type="text" class="pb-item-name" list="pbItemNamesDatalist" placeholder="பொருள் பெயர் (எ.கா. சோப்பு Small)" style="width:100%;margin-bottom:6px;" value="${escapeHtml(item.name)}">
       <div class="field-row">
         <input type="number" class="pb-item-qty" placeholder="Qty" inputmode="decimal" style="flex:1;" value="${item.qty !== undefined && item.qty !== "" ? item.qty : ""}">
         <input type="number" class="pb-item-rate" placeholder="Rate ₹" inputmode="decimal" style="flex:1;" value="${item.rate !== undefined && item.rate !== "" ? item.rate : ""}">
@@ -4287,7 +4318,8 @@
 
   function openPurchaseBillForm(pb){
     pbEditingId = pb ? pb.id : null;
-    $("pbFormTitle").textContent = pb ? "கொள்முதல் பில் திருத்த" : "புதிய கொள்முதல் பில்";
+    $("pbFormTitle").childNodes[0].textContent = (pb ? "கொள்முதல் பில் திருத்த" : "புதிய கொள்முதல் பில்") + " ";
+    $("pbItemNamesDatalist").innerHTML = stockMatchableNames().map(n => `<option value="${escapeHtml(n)}">`).join("");
     $("pbTraderName").value = pb ? (pb.traderName || "") : "";
     $("pbInvoiceNo").value = pb ? (pb.invoiceNo || "") : "";
     $("pbDate").value = pb ? (pb.date || todayDateOnly()) : todayDateOnly();
@@ -4363,7 +4395,9 @@
         createdAt: Date.now()
       };
       purchaseBills.push(pb);
-      stockUnmatched = applyPurchaseBillToStock(pb);
+      const result = applyPurchaseBillToStock(pb);
+      stockUnmatched = result.unmatched;
+      pb.stockAppliedIndices = result.matchedIndices;
     }
     savePurchaseBills();
     updatePurchaseBillBadge();
@@ -4410,6 +4444,35 @@
     balEl.textContent = "₹" + bal.toFixed(0);
     balEl.className = "balance-amount " + (bal <= 0.001 ? "give" : "short");
     $("pbDetailAddPaymentBtn").style.display = bal > 0.001 ? "block" : "none";
+
+    // Stock-match status: only meaningful for bills saved after this
+    // feature existed (they carry stockAppliedIndices). Older bills have
+    // no way to know what was already applied, so we never offer retry
+    // on them — that would risk double-counting stock silently.
+    const noteEl = $("pbDetailStockNote");
+    if(Array.isArray(pb.stockAppliedIndices)){
+      const unmatchedIdx = pb.items.map((_,i)=>i).filter(i => !pb.stockAppliedIndices.includes(i));
+      if(unmatchedIdx.length > 0){
+        const names = unmatchedIdx.map(i => pb.items[i].name).join(", ");
+        noteEl.innerHTML = `<div class="divider-note" style="margin-top:0;">⚠️ இருப்பு பொருந்தவில்லை: <b>${escapeHtml(names)}</b> — பொருள் பட்டியலில் உள்ள பெயருடன் பொருந்தவில்லை. மேலே "பொருள்" பெயரை திருத்தி (எ.கா. சரியான பெயர்/மொழி), கீழே மீண்டும் முயற்சிக்கவும்.</div>
+          <button class="btn btn-history" id="pbRetryStockBtn" style="width:100%;margin-top:8px;">🔄 இருப்பை மீண்டும் பொருத்த முயற்சி</button>`;
+        $("pbRetryStockBtn").addEventListener("click", () => {
+          const result = applyPurchaseBillToStock(pb, pb.stockAppliedIndices);
+          pb.stockAppliedIndices = (pb.stockAppliedIndices || []).concat(result.matchedIndices);
+          savePurchaseBills();
+          updatePurchaseBillBadge();
+          setStatus(result.matchedIndices.length
+            ? "✅ " + result.matchedIndices.length + " பொருளுக்கு இருப்பு சேர்க்கப்பட்டது"
+            : "⚠️ இன்னும் பொருந்தவில்லை: " + result.unmatched.join(", "));
+          openPurchaseBillDetail(pb.id);
+        });
+      } else {
+        noteEl.innerHTML = "";
+      }
+    } else {
+      noteEl.innerHTML = '<div class="divider-note" style="margin-top:0;">ℹ️ இது ஒரு பழைய பில் — இருப்பு தானாக சேர்க்கப்பட்டதா என தெரியவில்லை. தேவைப்பட்டால் 📊 இருப்பு வரலாறு-ல் 📦 மூலம் கைமுறையாக சேர்க்கவும்.</div>';
+    }
+
     $("purchaseBillOverlay").classList.remove("show");
     $("purchaseBillDetailOverlay").classList.add("show");
   }
@@ -4528,7 +4591,7 @@
       displayName = it.name;
       currentStock = typeof it.stock === "number" ? it.stock : 0;
     }
-    $("stockDetailTitle").textContent = displayName + " — இருப்பு வரலாறு";
+    $("stockDetailTitle").childNodes[0].textContent = displayName + " — இருப்பு வரலாறு ";
     $("stockDetailCurrent").textContent = formatStock(currentStock);
     const entries = (stockLedger[key] || []).slice().reverse();
     $("stockDetailList").innerHTML = entries.length
