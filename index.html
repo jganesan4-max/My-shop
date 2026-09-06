@@ -287,9 +287,9 @@
   .stock-item-row .si-qty{font-weight:800;font-size:16px;color:var(--ok);}
   .stock-item-row .si-qty.low{color:var(--danger);}
   .pb-name-suggest{
-    position:absolute;left:8px;right:8px;top:38px;z-index:20;
+    position:fixed;z-index:9999;
     background:#132a1c;border:1px solid rgba(245,241,227,0.25);border-radius:10px;
-    max-height:180px;overflow-y:auto;box-shadow:0 6px 18px rgba(0,0,0,0.4);
+    max-height:280px;overflow-y:auto;box-shadow:0 6px 18px rgba(0,0,0,0.5);
   }
   .pb-name-suggest-row{padding:10px 12px;font-size:15px;border-bottom:1px solid rgba(245,241,227,0.08);}
   .pb-name-suggest-row:last-child{border-bottom:none;}
@@ -459,6 +459,7 @@
 </style>
 </head>
 <body>
+<div id="pbNameSuggestGlobal" class="pb-name-suggest" style="display:none;"></div>
 <div class="app" id="app">
 
   <header>
@@ -4251,9 +4252,8 @@
 
   function pbItemRowHtml(idx, item){
     item = item || {name:"", qty:"", rate:""};
-    return `<div class="pb-item-row" data-idx="${idx}" style="background:var(--board);border:1px solid rgba(245,241,227,0.15);border-radius:10px;padding:8px;margin-top:8px;position:relative;">
-      <input type="text" class="pb-item-name" autocomplete="off" placeholder="பொருள் பெயர் (தட்டச்சு செய்யும்போது பொருத்தமான பெயர் கீழே தெரியும்)" style="width:100%;margin-bottom:6px;" value="${escapeHtml(item.name)}">
-      <div class="pb-name-suggest" style="display:none;"></div>
+    return `<div class="pb-item-row" data-idx="${idx}" style="background:var(--board);border:1px solid rgba(245,241,227,0.15);border-radius:10px;padding:8px;margin-top:8px;">
+      <input type="text" class="pb-item-name" autocomplete="off" placeholder="பொருள் பெயர் (இந்த பெட்டியை தட்டினால் பட்டியல் கீழே தெரியும்)" style="width:100%;margin-bottom:6px;" value="${escapeHtml(item.name)}">
       <div class="field-row">
         <input type="number" class="pb-item-qty" placeholder="Qty" inputmode="decimal" style="flex:1;" value="${item.qty !== undefined && item.qty !== "" ? item.qty : ""}">
         <input type="number" class="pb-item-rate" placeholder="Rate ₹" inputmode="decimal" style="flex:1;" value="${item.rate !== undefined && item.rate !== "" ? item.rate : ""}">
@@ -4274,25 +4274,38 @@
   // Custom suggestion dropdown for the item-name box — used instead of a
   // native <datalist>, which is unreliable on Android/mobile Chrome (the
   // little dropdown arrow shows but the list often never actually opens).
+  // Rendered as ONE shared box fixed to the viewport (not nested inside
+  // the scrolling sheet), and repositioned under whichever input is
+  // focused — this avoids it being invisibly clipped by the sheet's own
+  // scroll area, which is what happened when it lived inside each row.
   // Matches anywhere in the name (not just the start), case-insensitive,
   // so typing a couple of Tamil letters like "சோ" surfaces "சோப் ஆயில்"
   // too, not just names that literally start with it.
-  function pbShowNameSuggestions(input, suggestBox){
+  function pbShowNameSuggestions(input){
+    const box = $("pbNameSuggestGlobal");
     const q = input.value.trim().toLowerCase();
-    if(!q){ suggestBox.style.display = "none"; return; }
-    const matches = stockMatchableNames().filter(n => n.toLowerCase().includes(q)).slice(0, 8);
-    if(matches.length === 0){ suggestBox.style.display = "none"; return; }
-    suggestBox.innerHTML = matches.map(n => `<div class="pb-name-suggest-row">${escapeHtml(n)}</div>`).join("");
-    suggestBox.querySelectorAll(".pb-name-suggest-row").forEach(row => {
+    // Empty box (nothing typed yet) shows the FULL item list instead of
+    // hiding — this is what lets a shop owner without a Tamil keyboard
+    // just tap the field and pick a name straight off the list, with no
+    // typing needed at all. Typing further narrows it down as before.
+    const all = stockMatchableNames();
+    const matches = q ? all.filter(n => n.toLowerCase().includes(q)).slice(0, 30) : all.slice(0, 30);
+    if(matches.length === 0){ box.style.display = "none"; return; }
+    const rect = input.getBoundingClientRect();
+    box.style.left = rect.left + "px";
+    box.style.top = (rect.bottom + 4) + "px";
+    box.style.width = rect.width + "px";
+    box.innerHTML = matches.map(n => `<div class="pb-name-suggest-row">${escapeHtml(n)}</div>`).join("");
+    box.querySelectorAll(".pb-name-suggest-row").forEach((row, i) => {
       // mousedown (not click) fires before the input's blur hides the box,
       // so the tap registers even though the keyboard is closing.
       row.addEventListener("mousedown", (e) => {
         e.preventDefault();
-        input.value = row.textContent;
-        suggestBox.style.display = "none";
+        input.value = matches[i];
+        box.style.display = "none";
       });
     });
-    suggestBox.style.display = "block";
+    box.style.display = "block";
   }
 
   function pbBindItemRowEvents(){
@@ -4300,11 +4313,10 @@
       if(row.dataset.bound) return;
       row.dataset.bound = "1";
       const nameInput = row.querySelector(".pb-item-name");
-      const suggestBox = row.querySelector(".pb-name-suggest");
-      nameInput.addEventListener("input", () => pbShowNameSuggestions(nameInput, suggestBox));
-      nameInput.addEventListener("focus", () => pbShowNameSuggestions(nameInput, suggestBox));
+      nameInput.addEventListener("input", () => pbShowNameSuggestions(nameInput));
+      nameInput.addEventListener("focus", () => pbShowNameSuggestions(nameInput));
       nameInput.addEventListener("blur", () => {
-        setTimeout(() => { suggestBox.style.display = "none"; }, 150);
+        setTimeout(() => { $("pbNameSuggestGlobal").style.display = "none"; }, 150);
       });
       row.querySelectorAll(".pb-item-qty, .pb-item-rate").forEach(inp => {
         inp.addEventListener("input", () => pbRecomputeTotal());
