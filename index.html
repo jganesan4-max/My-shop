@@ -2430,8 +2430,48 @@
     qtyPickerQueue = [];
   });
 
+  // Voice balance-query: lets the shop owner just SAY something like
+  // "ராமேஷ் நிலுவை" or "Ramesh balance" into the same mic used for
+  // billing, and hear/see the answer immediately — no need to open the
+  // Credit Ledger page at all. Only triggers when one of these fairly
+  // distinctive words is heard, so it won't misfire on a normal item
+  // name during billing.
+  const BALANCE_QUERY_KEYWORDS = ["நிலுவை","பாக்கி","கடன்","balance"];
+  const BALANCE_QUERY_FILLER = ["எவ்வளவு","என்ன","சொல்லு","சொல்","இருக்கு","இருக்கா","கொடு","?"];
+  function tryHandleBalanceQuery(transcript){
+    const lower = transcript.toLowerCase();
+    const hit = BALANCE_QUERY_KEYWORDS.find(k => lower.includes(k.toLowerCase()));
+    if(!hit) return false;
+    let namePart = transcript;
+    BALANCE_QUERY_KEYWORDS.forEach(k => { namePart = namePart.replace(new RegExp(k, "gi"), " "); });
+    BALANCE_QUERY_FILLER.forEach(w => { namePart = namePart.replace(new RegExp(w, "gi"), " "); });
+    namePart = namePart.replace(/\s+/g, " ").trim();
+    if(!namePart){
+      setStatus("யாருடைய நிலுவை என்று பெயர் சொல்லவும்");
+      speak("யாருடைய நிலுவை என்று பெயர் சொல்லவும்");
+      return true;
+    }
+    const names = Object.keys(ledger);
+    const target = namePart.toLowerCase();
+    let match = names.find(n => n.toLowerCase() === target);
+    if(!match) match = names.find(n => n.toLowerCase().includes(target) || target.includes(n.toLowerCase()));
+    if(!match){
+      setStatus('"' + namePart + '" கடன் பட்டியலில் இல்லை');
+      speak(namePart + " கடன் பட்டியலில் இல்லை");
+      return true;
+    }
+    const bal = ledgerBalance(match);
+    const msg = bal > 0.001
+      ? match + " நிலுவை ரூபாய் " + bal.toFixed(0)
+      : (bal < -0.001 ? match + "-க்கு நாம கொடுக்க வேண்டியது ரூபாய் " + Math.abs(bal).toFixed(0) : match + "-ன் நிலுவை இல்லை");
+    setStatus(msg);
+    speak(msg);
+    return true;
+  }
+
   function handleMainTranscript(transcript){
     setStatus('கேட்டது: "' + transcript + '"');
+    if(tryHandleBalanceQuery(transcript)) return;
     const found = parseMultipleItems(transcript);
     if(found.length === 0){
       const adHoc = parseAdHocItem(transcript);
