@@ -814,7 +814,7 @@
 <div class="overlay" id="stockLedgerDetailOverlay">
   <div class="sheet">
     <div class="sheet-handle"></div>
-    <div class="sheet-title" id="stockDetailTitle">இருப்பு வரலாறு <button class="icon-btn" id="closeStockLedgerDetail">✕</button></div>
+    <div class="sheet-title" id="stockDetailTitle">இருப்பு வரலாறு <button class="icon-btn" id="closeStockLedgerDetail" title="பட்டியலுக்கு திரும்ப">←</button></div>
     <div class="balance-panel">
       <div class="balance-label">தற்போதைய இருப்பு</div>
       <div class="balance-amount" id="stockDetailCurrent">0</div>
@@ -1451,7 +1451,7 @@
       names.push(it.name);
       (it.variants || []).forEach(v => names.push(it.name + " " + v.label));
     });
-    return names;
+    return names.sort((a,b) => a.localeCompare(b));
   }
 
   // Lists customers who: have an outstanding balance, have a phone number
@@ -4289,7 +4289,7 @@
     // just tap the field and pick a name straight off the list, with no
     // typing needed at all. Typing further narrows it down as before.
     const all = stockMatchableNames();
-    const matches = q ? all.filter(n => n.toLowerCase().includes(q)).slice(0, 30) : all.slice(0, 30);
+    const matches = q ? all.filter(n => n.toLowerCase().includes(q)).slice(0, 200) : all.slice(0, 200);
     if(matches.length === 0){ box.style.display = "none"; return; }
     const rect = input.getBoundingClientRect();
     box.style.left = rect.left + "px";
@@ -4666,7 +4666,12 @@
     $("stockLedgerOverlay").classList.remove("show");
   });
   $("closeStockLedgerDetail").addEventListener("click", () => {
+    // Goes back to the list (not a full close) — lets you check several
+    // items one after another without reopening Stock History each time.
+    // Tapping the list's own ✕, or outside the sheet, exits fully.
     $("stockLedgerDetailOverlay").classList.remove("show");
+    renderStockLedgerList();
+    $("stockLedgerOverlay").classList.add("show");
   });
 
   $("standbyBtn").addEventListener("click", () => {
