@@ -2438,6 +2438,80 @@
   // name during billing.
   const BALANCE_QUERY_KEYWORDS = ["நிலுவை","பாக்கி","கடன்","balance"];
   const BALANCE_QUERY_FILLER = ["எவ்வளவு","என்ன","சொல்லு","சொல்","இருக்கு","இருக்கா","கொடு","கணக்கு","account","அக்கவுன்ட்"];
+
+  // Ledger customer names are typed in English letters (e.g. "Ramesh"),
+  // but Tamil voice recognition transcribes a SPOKEN name into Tamil
+  // script (e.g. "ராமேஷ்") — two different alphabets, so no amount of
+  // spelling-tolerance helps; it has to be phonetically sounded out into
+  // Latin letters first, then compared loosely (since the sounding-out
+  // is only ever approximate).
+  const TAMIL_CONSONANTS = {
+    'க':'k','ங':'ng','ச':'s','ஞ':'ny','ட':'t','ண':'n','த':'th','ந':'n',
+    'ப':'p','ம':'m','ய':'y','ர':'r','ல':'l','வ':'v','ழ':'zh','ள':'l',
+    'ற':'r','ன':'n','ஜ':'j','ஷ':'sh','ஸ':'s','ஹ':'h','ஶ':'sh'
+  };
+  const TAMIL_VOWEL_SIGNS = {'ா':'aa','ி':'i','ீ':'ii','ு':'u','ூ':'uu','ெ':'e','ே':'ee','ை':'ai','ொ':'o','ோ':'oo','ௌ':'au'};
+  const TAMIL_STANDALONE_VOWELS = {'அ':'a','ஆ':'aa','இ':'i','ஈ':'ii','உ':'u','ஊ':'uu','எ':'e','ஏ':'ee','ஐ':'ai','ஒ':'o','ஓ':'oo','ஔ':'au'};
+  const TAMIL_VIRAMA = '\u0BCD';
+  function tamilToLatinPhonetic(str){
+    let out = "";
+    const chars = Array.from(str);
+    for(let i=0;i<chars.length;i++){
+      const c = chars[i];
+      if(TAMIL_STANDALONE_VOWELS[c]){ out += TAMIL_STANDALONE_VOWELS[c]; continue; }
+      if(TAMIL_CONSONANTS[c]){
+        const next = chars[i+1];
+        if(next === TAMIL_VIRAMA){ out += TAMIL_CONSONANTS[c]; i++; }
+        else if(next && TAMIL_VOWEL_SIGNS[next]){ out += TAMIL_CONSONANTS[c] + TAMIL_VOWEL_SIGNS[next]; i++; }
+        else { out += TAMIL_CONSONANTS[c] + "a"; }
+        continue;
+      }
+      out += c.toLowerCase();
+    }
+    return out;
+  }
+  function levenshteinDistance(a, b){
+    const m = a.length, n = b.length;
+    const dp = Array.from({length: m+1}, () => new Array(n+1).fill(0));
+    for(let i=0;i<=m;i++) dp[i][0]=i;
+    for(let j=0;j<=n;j++) dp[0][j]=j;
+    for(let i=1;i<=m;i++){
+      for(let j=1;j<=n;j++){
+        dp[i][j] = a[i-1]===b[j-1] ? dp[i-1][j-1] : 1+Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+      }
+    }
+    return dp[m][n];
+  }
+  function stringSimilarity(a, b){
+    if(!a.length && !b.length) return 1;
+    return 1 - levenshteinDistance(a,b) / Math.max(a.length, b.length);
+  }
+  // Vowels are the least reliable part of a cross-script sound-out — two
+  // consonant "skeletons" (all vowels stripped) matching closely is a
+  // stronger signal than the full spelling matching closely.
+  function consonantSkeleton(s){
+    return s.toLowerCase().replace(/[aeiou]/g, "");
+  }
+  // Best-effort phonetic match between a Tamil-script spoken name and the
+  // shop's (usually English-lettered) Ledger names. Picks whichever
+  // ledger name scores highest and only accepts it above a threshold
+  // loose enough to survive real transliteration noise, but tight enough
+  // to not casually confuse two different customers.
+  function phoneticNameMatch(namePart, candidateNames){
+    const spoken = tamilToLatinPhonetic(namePart).toLowerCase();
+    const spokenSkeleton = consonantSkeleton(spoken);
+    let best = null, bestScore = 0;
+    candidateNames.forEach(n => {
+      const cand = n.toLowerCase();
+      const score = Math.max(
+        stringSimilarity(spoken, cand),
+        stringSimilarity(spokenSkeleton, consonantSkeleton(cand))
+      );
+      if(score > bestScore){ bestScore = score; best = n; }
+    });
+    return bestScore >= 0.45 ? best : null;
+  }
+
   function tryHandleBalanceQuery(transcript){
     try{
       const lower = transcript.toLowerCase();
@@ -2454,18 +2528,20 @@
       }
       const names = Object.keys(ledger);
       const target = namePart.toLowerCase();
-      // Plain match first; if that fails, strip Tamil vowel-length marks
-      // (ா/ி/ீ/ு/ூ etc.) from both sides and try again — voice
-      // recognition very often drops or shortens these, so "ராமேஷ்"
-      // spoken aloud may come back transcribed as "ரமேஷ்".
-      const normalizeForVoiceMatch = s => s.toLowerCase().replace(/[\u0BBE-\u0BCC\u0BD7]/g, "").replace(/\s+/g, "").trim();
+      // 1. Exact / substring match (handles same-script or already-typed names).
       let match = names.find(n => n.toLowerCase() === target);
       if(!match) match = names.find(n => n.toLowerCase().includes(target) || target.includes(n.toLowerCase()));
+      // 2. Tamil vowel-length tolerant match (handles Tamil-vs-Tamil ASR variance).
       if(!match){
+        const normalizeForVoiceMatch = s => s.toLowerCase().replace(/[\u0BBE-\u0BCC\u0BD7]/g, "").replace(/\s+/g, "").trim();
         const normTarget = normalizeForVoiceMatch(namePart);
         match = names.find(n => normalizeForVoiceMatch(n) === normTarget);
         if(!match) match = names.find(n => normalizeForVoiceMatch(n).includes(normTarget) || normTarget.includes(normalizeForVoiceMatch(n)));
       }
+      // 3. Cross-script phonetic match (Tamil spoken name vs English-typed
+      // ledger name) — the case that matters most, since names are
+      // usually typed in English but always spoken in Tamil.
+      if(!match) match = phoneticNameMatch(namePart, names);
       if(!match){
         setStatus('"' + namePart + '" கடன் பட்டியலில் இல்லை');
         speak(namePart + " கடன் பட்டியலில் இல்லை");
