@@ -2492,24 +2492,40 @@
   function consonantSkeleton(s){
     return s.toLowerCase().replace(/[aeiou]/g, "");
   }
+  // Tamil script doesn't distinguish voiced/voiceless consonant pairs —
+  // ப can sound like "pa" OR "ba", த like "tha" OR "dha", க like "ka" OR
+  // "ga" — so "Babu" spoken aloud sounds out as "Paapu". Canonicalize
+  // both sides to one form before comparing so this stops being a
+  // mismatch.
+  function canonicalizeVoicing(s){
+    return s.toLowerCase()
+      .replace(/th/g,'t').replace(/dh/g,'t')
+      .replace(/b/g,'p').replace(/g/g,'k').replace(/d/g,'t');
+  }
   // Best-effort phonetic match between a Tamil-script spoken name and the
   // shop's (usually English-lettered) Ledger names. Picks whichever
-  // ledger name scores highest and only accepts it above a threshold
-  // loose enough to survive real transliteration noise, but tight enough
-  // to not casually confuse two different customers.
+  // ledger name scores highest — but ONLY if it's clearly ahead of the
+  // next-best candidate. A wrong "not found" just sends the shop owner
+  // to check the Ledger page manually (safe); a wrong MATCH would speak
+  // out someone else's balance with full confidence (dangerous) — so
+  // when two names sound too close to call, this refuses to guess
+  // rather than pick one, same as it would if nothing matched at all.
   function phoneticNameMatch(namePart, candidateNames){
-    const spoken = tamilToLatinPhonetic(namePart).toLowerCase();
+    const spoken = canonicalizeVoicing(tamilToLatinPhonetic(namePart));
     const spokenSkeleton = consonantSkeleton(spoken);
-    let best = null, bestScore = 0;
+    let best = null, bestScore = 0, secondScore = 0;
     candidateNames.forEach(n => {
-      const cand = n.toLowerCase();
+      const cand = canonicalizeVoicing(n);
       const score = Math.max(
         stringSimilarity(spoken, cand),
         stringSimilarity(spokenSkeleton, consonantSkeleton(cand))
       );
-      if(score > bestScore){ bestScore = score; best = n; }
+      if(score > bestScore){ secondScore = bestScore; bestScore = score; best = n; }
+      else if(score > secondScore){ secondScore = score; }
     });
-    return bestScore >= 0.45 ? best : null;
+    if(bestScore < 0.45) return null;
+    if(bestScore - secondScore < 0.12) return null; // too close to call — refuse rather than risk the wrong customer
+    return best;
   }
 
   function tryHandleBalanceQuery(transcript){
