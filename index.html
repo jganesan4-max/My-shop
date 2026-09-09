@@ -1632,11 +1632,13 @@
     $("ledgerPayOverlay").classList.remove("show");
   });
   $("ledgerMainBtn").addEventListener("click", ()=>{
+    cameFromReportsHub = false;
     renderLedger();
     $("ledgerOverlay").classList.add("show");
   });
   $("closeLedger").addEventListener("click", ()=>{
     $("ledgerOverlay").classList.remove("show");
+    if(cameFromReportsHub){ cameFromReportsHub = false; $("reportsHubOverlay").classList.add("show"); }
   });
 
   // ---- Ledger customer detail: full transaction history (credit bills +
@@ -1799,6 +1801,11 @@
   const STORAGE_KEY_DEVICENAME = "kadai:devicename";
   const STORAGE_KEY_BACKUPEMAIL = "kadai:backupemail";
   let syncCode = "";
+  // True only while Ledger/Purchase Bill/Stock Book is open because the
+  // Reports hub opened it — makes their back button return to the hub
+  // instead of exiting completely, without changing how they behave when
+  // opened from their normal dashboard shortcuts.
+  let cameFromReportsHub = false;
   try{ syncCode = localStorage.getItem(STORAGE_KEY_SYNCCODE) || ""; }catch(e){ syncCode = ""; }
   let deviceName = "";
   try{ deviceName = localStorage.getItem(STORAGE_KEY_DEVICENAME) || ""; }catch(e){ deviceName = ""; }
@@ -2690,6 +2697,10 @@
   $("creditCustomerNameMic").addEventListener("click", () => {
     startSingleShotMic("creditCustomerName", $("creditCustomerNameMic"), (transcript) => {
       $("creditCustomerName").value = transcript;
+      // Setting .value in code doesn't fire a native "input" event, so the
+      // Done button's enabled/disabled check (tied to that event) never
+      // re-runs on its own after a mic fill — call it directly here.
+      updateCreditConfirmState();
     });
   });
 
@@ -4227,16 +4238,19 @@
     openProductReport();
   });
   $("reportsOpenLedgerBtn").addEventListener("click", () => {
+    cameFromReportsHub = true;
     $("reportsHubOverlay").classList.remove("show");
     renderLedger();
     $("ledgerOverlay").classList.add("show");
   });
   $("reportsOpenPurchaseBtn").addEventListener("click", () => {
+    cameFromReportsHub = true;
     $("reportsHubOverlay").classList.remove("show");
     renderPurchaseBillList();
     $("purchaseBillOverlay").classList.add("show");
   });
   $("reportsOpenStockBtn").addEventListener("click", () => {
+    cameFromReportsHub = true;
     $("reportsHubOverlay").classList.remove("show");
     renderStockLedgerList();
     $("stockLedgerOverlay").classList.add("show");
@@ -4684,11 +4698,13 @@
   }
 
   $("purchaseBillBtn").addEventListener("click", () => {
+    cameFromReportsHub = false;
     renderPurchaseBillList();
     $("purchaseBillOverlay").classList.add("show");
   });
   $("closePurchaseBill").addEventListener("click", () => {
     $("purchaseBillOverlay").classList.remove("show");
+    if(cameFromReportsHub){ cameFromReportsHub = false; $("reportsHubOverlay").classList.add("show"); return; }
   });
 
   // ---- Purchase Bill form (add / edit) ----
@@ -5104,12 +5120,14 @@
   }
 
   $("openStockLedgerBtn").addEventListener("click", () => {
+    cameFromReportsHub = false;
     renderStockLedgerList();
     $("settingsOverlay").classList.remove("show");
     $("stockLedgerOverlay").classList.add("show");
   });
   $("closeStockLedger").addEventListener("click", () => {
     $("stockLedgerOverlay").classList.remove("show");
+    if(cameFromReportsHub){ cameFromReportsHub = false; $("reportsHubOverlay").classList.add("show"); }
   });
   $("closeStockLedgerDetail").addEventListener("click", () => {
     // Goes back to the list (not a full close) — lets you check several
