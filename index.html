@@ -842,7 +842,7 @@
 <div class="overlay" id="salesReportOverlay">
   <div class="sheet">
     <div class="sheet-handle"></div>
-    <div class="sheet-title">📈 விற்பனை அறிக்கை <button class="icon-btn" id="closeSalesReport">✕</button></div>
+    <div class="sheet-title">📈 விற்பனை அறிக்கை <button class="icon-btn" id="closeSalesReport" title="பட்டியலுக்கு திரும்ப">←</button></div>
     <div class="pay-method-row">
       <button type="button" class="pay-method-btn active" id="srModeDaily" data-mode="daily"><span class="emoji">📅</span>தினசரி</button>
       <button type="button" class="pay-method-btn" id="srModeMonthly" data-mode="monthly"><span class="emoji">🗓️</span>மாதம்</button>
@@ -858,7 +858,7 @@
 <div class="overlay" id="productReportOverlay">
   <div class="sheet">
     <div class="sheet-handle"></div>
-    <div class="sheet-title">📦 பொருள் வாரியான விற்பனை <button class="icon-btn" id="closeProductReport">✕</button></div>
+    <div class="sheet-title">📦 பொருள் வாரியான விற்பனை <button class="icon-btn" id="closeProductReport" title="பட்டியலுக்கு திரும்ப">←</button></div>
     <div class="pay-method-row">
       <button type="button" class="pay-method-btn active" id="prModeDaily" data-mode="daily"><span class="emoji">📅</span>தினசரி</button>
       <button type="button" class="pay-method-btn" id="prModeMonthly" data-mode="monthly"><span class="emoji">🗓️</span>மாதம்</button>
@@ -866,6 +866,7 @@
     <input type="date" id="prDateInput" style="margin-top:12px;">
     <input type="month" id="prMonthInput" style="margin-top:12px;display:none;">
     <div class="history-day-total" id="prTotal" style="margin-top:14px;"></div>
+    <canvas id="prBarChart" width="600" height="260" style="width:100%;height:auto;margin-top:10px;display:none;"></canvas>
     <div id="prList" style="margin-top:6px;"></div>
   </div>
 </div>
@@ -1015,7 +1016,10 @@
 
       <div id="creditNewCustomerSection">
         <div class="field-label" style="margin-top:0;color:var(--chalk);text-align:left;">வாடிக்கையாளர் பெயர்</div>
-        <input type="text" id="creditCustomerName" placeholder="எ.கா. முருகன்">
+        <div class="field-row">
+          <input type="text" id="creditCustomerName" placeholder="எ.கா. முருகன்">
+          <button class="mic-mini" id="creditCustomerNameMic">🎙️</button>
+        </div>
       </div>
 
       <div id="creditExistingCustomerSection" style="display:none;">
@@ -2683,6 +2687,12 @@
     });
   });
 
+  $("creditCustomerNameMic").addEventListener("click", () => {
+    startSingleShotMic("creditCustomerName", $("creditCustomerNameMic"), (transcript) => {
+      $("creditCustomerName").value = transcript;
+    });
+  });
+
   $("qaMic").addEventListener("click", () => {
     startSingleShotMic("qaName", $("qaMic"), (transcript) => {
       $("qaName").value = transcript;
@@ -4254,7 +4264,7 @@
     } else {
       const monthStr = $("srMonthInput").value;
       if(!monthStr) return;
-      const days = getSalesForMonth(monthStr);
+      const days = getSalesForMonth(monthStr).slice().reverse(); // newest day first — easiest to find without scrolling
       const nonEmpty = days.filter(d => d.bills.length > 0);
       if(nonEmpty.length === 0){
         $("srList").innerHTML = '<div class="divider-note" style="margin-top:0;">இந்த மாதத்திற்கு பில் இல்லை</div>';
@@ -4300,10 +4310,46 @@
   $("srMonthInput").addEventListener("change", renderSalesReport);
   $("closeSalesReport").addEventListener("click", () => {
     $("salesReportOverlay").classList.remove("show");
+    $("reportsHubOverlay").classList.add("show");
   });
 
   // ---- Product-wise Sales Report: qty + revenue per item ----
   let prMode = "daily";
+  function drawProductBarChart(products){
+    const canvas = $("prBarChart");
+    const top = products.slice(0, 8); // busiest items only — keeps the chart readable
+    if(top.length === 0){ canvas.style.display = "none"; return; }
+    canvas.style.display = "block";
+    const ctx = canvas.getContext("2d");
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0,0,W,H);
+    const rowH = H / top.length;
+    const maxRevenue = Math.max(...top.map(p => p.revenue));
+    const labelW = 170;
+    ctx.textBaseline = "middle";
+    top.forEach((p, i) => {
+      const y = i*rowH;
+      const barMaxW = W - labelW - 70;
+      const barW = maxRevenue > 0 ? (p.revenue / maxRevenue) * barMaxW : 0;
+      // Item name, truncated to fit the label column.
+      ctx.fillStyle = "#f5f1e3";
+      ctx.font = "14px 'Noto Sans Tamil', sans-serif";
+      ctx.textAlign = "right";
+      let name = p.name;
+      while(ctx.measureText(name).width > labelW - 10 && name.length > 1) name = name.slice(0, -1);
+      if(name !== p.name) name = name.slice(0, -1) + "…";
+      ctx.fillText(name, labelW, y + rowH/2);
+      // Bar.
+      ctx.fillStyle = "#f2b03b";
+      const barH = rowH * 0.55;
+      ctx.fillRect(labelW + 8, y + (rowH-barH)/2, Math.max(barW,2), barH);
+      // Revenue label at the end of the bar.
+      ctx.textAlign = "left";
+      ctx.fillStyle = "#f5f1e3";
+      ctx.fillText("₹" + p.revenue.toFixed(0), labelW + 12 + barW, y + rowH/2);
+    });
+  }
+
   function renderProductReport(){
     let bills = [];
     let label = "";
@@ -4321,9 +4367,11 @@
     if(bills.length === 0){
       $("prList").innerHTML = '<div class="divider-note" style="margin-top:0;">இந்த காலத்திற்கு பில் இல்லை</div>';
       $("prTotal").textContent = "";
+      $("prBarChart").style.display = "none";
       return;
     }
     const products = aggregateProductSales(bills);
+    drawProductBarChart(products);
     $("prList").innerHTML = products.map(p => `<div class="history-row"><span>${escapeHtml(p.name)} <span class="pay-tag">× ${formatQty(p.qty)}</span></span><span>₹${p.revenue.toFixed(0)}</span></div>`).join("");
     const grand = products.reduce((s,p)=>s+p.revenue,0);
     $("prTotal").textContent = label + " மொத்தம் (" + products.length + " பொருட்கள்): ₹" + grand.toFixed(0);
@@ -4359,6 +4407,7 @@
   $("prMonthInput").addEventListener("change", renderProductReport);
   $("closeProductReport").addEventListener("click", () => {
     $("productReportOverlay").classList.remove("show");
+    $("reportsHubOverlay").classList.add("show");
   });
 
   function drawPaymentPieChart(dayList){
