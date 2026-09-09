@@ -3102,9 +3102,12 @@
     container.innerHTML = filtered.map(name => {
       const bal = ledgerBalance(name);
       const isSelected = name === selectedName;
+      const balBadge = bal > 0.001
+        ? `<span class="pb-balance-badge" style="margin-top:0;">நிலுவை ₹${bal.toFixed(0)}</span>`
+        : `<span style="color:var(--chalk-dim);font-size:13px;">நிலுவை இல்லை</span>`;
       return `<div class="customer-search-row${isSelected ? ' selected' : ''}" data-name="${escapeHtml(name)}">
         <span>${escapeHtml(name)}</span>
-        <span style="color:${bal>0?'var(--danger)':'var(--chalk-dim)'};font-size:13px;">${bal>0.001 ? "நிலுவை ₹"+bal.toFixed(0) : "நிலுவை இல்லை"}</span>
+        ${balBadge}
       </div>`;
     }).join("");
     container.querySelectorAll(".customer-search-row").forEach(row => {
@@ -4219,6 +4222,7 @@
   $("cloudReportBtn").addEventListener("click", loadCloudReport);
   $("closeHistory").addEventListener("click", () => {
     $("historyOverlay").classList.remove("show");
+    if(cameFromReportsHub){ cameFromReportsHub = false; $("reportsHubOverlay").classList.add("show"); }
   });
 
   // ---- Reports hub: one page linking to every report/ledger screen ----
@@ -4226,6 +4230,7 @@
     $("reportsHubOverlay").classList.remove("show");
   });
   $("reportsOpenLiveBtn").addEventListener("click", () => {
+    cameFromReportsHub = true;
     $("reportsHubOverlay").classList.remove("show");
     openLiveHistoryOverlay();
   });
