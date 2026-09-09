@@ -823,6 +823,53 @@
   </div>
 </div>
 
+<!-- Reports hub: one page linking to every report/ledger screen so the
+     shop owner doesn't need to remember separate buttons for each. -->
+<div class="overlay" id="reportsHubOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">📊 அறிக்கைகள் (Reports) <button class="icon-btn" id="closeReportsHub">✕</button></div>
+    <button class="btn btn-history" id="reportsOpenLiveBtn" style="width:100%;margin-top:6px;">📒 இன்றைய விற்பனை (Live, 24hr)</button>
+    <button class="btn btn-history" id="reportsOpenSalesBtn" style="width:100%;margin-top:10px;">📈 விற்பனை அறிக்கை (நாள் / மாதம்)</button>
+    <button class="btn btn-history" id="reportsOpenProductBtn" style="width:100%;margin-top:10px;">📦 பொருள் வாரியான விற்பனை</button>
+    <button class="btn btn-history" id="reportsOpenLedgerBtn" style="width:100%;margin-top:10px;">💰 கடன் கணக்கு (Credit Ledger)</button>
+    <button class="btn btn-history" id="reportsOpenPurchaseBtn" style="width:100%;margin-top:10px;">🧾 கொள்முதல் பில் (Purchase Ledger)</button>
+    <button class="btn btn-history" id="reportsOpenStockBtn" style="width:100%;margin-top:10px;">📊 இருப்பு புத்தகம் (Stock Book)</button>
+  </div>
+</div>
+
+<!-- Sales Report: browse any past day, or a whole month, not just today -->
+<div class="overlay" id="salesReportOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">📈 விற்பனை அறிக்கை <button class="icon-btn" id="closeSalesReport">✕</button></div>
+    <div class="pay-method-row">
+      <button type="button" class="pay-method-btn active" id="srModeDaily" data-mode="daily"><span class="emoji">📅</span>தினசரி</button>
+      <button type="button" class="pay-method-btn" id="srModeMonthly" data-mode="monthly"><span class="emoji">🗓️</span>மாதம்</button>
+    </div>
+    <input type="date" id="srDateInput" style="margin-top:12px;">
+    <input type="month" id="srMonthInput" style="margin-top:12px;display:none;">
+    <div class="history-day-total" id="srTotal" style="margin-top:14px;"></div>
+    <div id="srList" style="margin-top:6px;"></div>
+  </div>
+</div>
+
+<!-- Product-wise Sales Report: which items sold, how much qty, how much revenue -->
+<div class="overlay" id="productReportOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">📦 பொருள் வாரியான விற்பனை <button class="icon-btn" id="closeProductReport">✕</button></div>
+    <div class="pay-method-row">
+      <button type="button" class="pay-method-btn active" id="prModeDaily" data-mode="daily"><span class="emoji">📅</span>தினசரி</button>
+      <button type="button" class="pay-method-btn" id="prModeMonthly" data-mode="monthly"><span class="emoji">🗓️</span>மாதம்</button>
+    </div>
+    <input type="date" id="prDateInput" style="margin-top:12px;">
+    <input type="month" id="prMonthInput" style="margin-top:12px;display:none;">
+    <div class="history-day-total" id="prTotal" style="margin-top:14px;"></div>
+    <div id="prList" style="margin-top:6px;"></div>
+  </div>
+</div>
+
 <!-- Standby sheet -->
 <div class="overlay" id="standbyOverlay">
   <div class="sheet">
@@ -4101,7 +4148,11 @@
     $("itemVariantsOverlay").classList.remove("show");
   });
 
-  $("historyBtn").addEventListener("click", async () => {
+  $("historyBtn").addEventListener("click", () => {
+    $("reportsHubOverlay").classList.add("show");
+  });
+
+  async function openLiveHistoryOverlay(){
     const listEl = $("historyList");
     const dayList = getTodayList();
     if(dayList.length === 0){
@@ -4143,10 +4194,171 @@
     setCloudReportStatus("");
     if(syncCode) prefetchFirebase();
     $("historyOverlay").classList.add("show");
-  });
+  }
   $("cloudReportBtn").addEventListener("click", loadCloudReport);
   $("closeHistory").addEventListener("click", () => {
     $("historyOverlay").classList.remove("show");
+  });
+
+  // ---- Reports hub: one page linking to every report/ledger screen ----
+  $("closeReportsHub").addEventListener("click", () => {
+    $("reportsHubOverlay").classList.remove("show");
+  });
+  $("reportsOpenLiveBtn").addEventListener("click", () => {
+    $("reportsHubOverlay").classList.remove("show");
+    openLiveHistoryOverlay();
+  });
+  $("reportsOpenSalesBtn").addEventListener("click", () => {
+    $("reportsHubOverlay").classList.remove("show");
+    openSalesReport();
+  });
+  $("reportsOpenProductBtn").addEventListener("click", () => {
+    $("reportsHubOverlay").classList.remove("show");
+    openProductReport();
+  });
+  $("reportsOpenLedgerBtn").addEventListener("click", () => {
+    $("reportsHubOverlay").classList.remove("show");
+    renderLedger();
+    $("ledgerOverlay").classList.add("show");
+  });
+  $("reportsOpenPurchaseBtn").addEventListener("click", () => {
+    $("reportsHubOverlay").classList.remove("show");
+    renderPurchaseBillList();
+    $("purchaseBillOverlay").classList.add("show");
+  });
+  $("reportsOpenStockBtn").addEventListener("click", () => {
+    $("reportsHubOverlay").classList.remove("show");
+    renderStockLedgerList();
+    $("stockLedgerOverlay").classList.add("show");
+  });
+
+  // ---- Sales Report: browse any single past day, or a whole month ----
+  let srMode = "daily";
+  function renderSalesReportRow(bill, idx){
+    const tag = bill.method === "cash" ? "💵 Cash" : (bill.method === "bank" ? "🏦 Bank" : "📒 " + escapeHtml(bill.customerName || "Credit"));
+    return `<div class="history-row"><span>#${bill.billNo || ""} ${bill.time || ""} <span class="pay-tag">${tag}</span></span><span>₹${bill.total.toFixed(0)}</span></div>`;
+  }
+  function renderSalesReport(){
+    if(srMode === "daily"){
+      const dateStr = $("srDateInput").value;
+      if(!dateStr) return;
+      const dayList = getSalesForDate(dateStr);
+      if(dayList.length === 0){
+        $("srList").innerHTML = '<div class="divider-note" style="margin-top:0;">இந்த தேதிக்கு பில் இல்லை</div>';
+        $("srTotal").textContent = "";
+        return;
+      }
+      $("srList").innerHTML = dayList.map(renderSalesReportRow).join("");
+      const total = dayList.reduce((s,d)=>s+d.total,0);
+      $("srTotal").textContent = dateStr + " மொத்தம் (" + dayList.length + " பில்): ₹" + total.toFixed(0);
+    } else {
+      const monthStr = $("srMonthInput").value;
+      if(!monthStr) return;
+      const days = getSalesForMonth(monthStr);
+      const nonEmpty = days.filter(d => d.bills.length > 0);
+      if(nonEmpty.length === 0){
+        $("srList").innerHTML = '<div class="divider-note" style="margin-top:0;">இந்த மாதத்திற்கு பில் இல்லை</div>';
+        $("srTotal").textContent = "";
+        return;
+      }
+      $("srList").innerHTML = nonEmpty.map(d => {
+        const dayTotal = d.bills.reduce((s,b)=>s+b.total,0);
+        return `<div class="history-row"><span>📅 ${d.date} (${d.bills.length} பில்)</span><span>₹${dayTotal.toFixed(0)}</span></div>`;
+      }).join("");
+      const grand = nonEmpty.reduce((s,d)=>s+d.bills.reduce((s2,b)=>s2+b.total,0),0);
+      $("srTotal").textContent = monthStr + " மொத்தம்: ₹" + grand.toFixed(0);
+    }
+  }
+  function openSalesReport(){
+    srMode = "daily";
+    $("srModeDaily").classList.add("active");
+    $("srModeMonthly").classList.remove("active");
+    $("srDateInput").style.display = "block";
+    $("srMonthInput").style.display = "none";
+    if(!$("srDateInput").value) $("srDateInput").value = todayDateOnly();
+    if(!$("srMonthInput").value) $("srMonthInput").value = todayDateOnly().slice(0,7);
+    renderSalesReport();
+    $("salesReportOverlay").classList.add("show");
+  }
+  $("srModeDaily").addEventListener("click", () => {
+    srMode = "daily";
+    $("srModeDaily").classList.add("active");
+    $("srModeMonthly").classList.remove("active");
+    $("srDateInput").style.display = "block";
+    $("srMonthInput").style.display = "none";
+    renderSalesReport();
+  });
+  $("srModeMonthly").addEventListener("click", () => {
+    srMode = "monthly";
+    $("srModeMonthly").classList.add("active");
+    $("srModeDaily").classList.remove("active");
+    $("srMonthInput").style.display = "block";
+    $("srDateInput").style.display = "none";
+    renderSalesReport();
+  });
+  $("srDateInput").addEventListener("change", renderSalesReport);
+  $("srMonthInput").addEventListener("change", renderSalesReport);
+  $("closeSalesReport").addEventListener("click", () => {
+    $("salesReportOverlay").classList.remove("show");
+  });
+
+  // ---- Product-wise Sales Report: qty + revenue per item ----
+  let prMode = "daily";
+  function renderProductReport(){
+    let bills = [];
+    let label = "";
+    if(prMode === "daily"){
+      const dateStr = $("prDateInput").value;
+      if(!dateStr) return;
+      bills = getSalesForDate(dateStr);
+      label = dateStr;
+    } else {
+      const monthStr = $("prMonthInput").value;
+      if(!monthStr) return;
+      getSalesForMonth(monthStr).forEach(d => { bills = bills.concat(d.bills); });
+      label = monthStr;
+    }
+    if(bills.length === 0){
+      $("prList").innerHTML = '<div class="divider-note" style="margin-top:0;">இந்த காலத்திற்கு பில் இல்லை</div>';
+      $("prTotal").textContent = "";
+      return;
+    }
+    const products = aggregateProductSales(bills);
+    $("prList").innerHTML = products.map(p => `<div class="history-row"><span>${escapeHtml(p.name)} <span class="pay-tag">× ${formatQty(p.qty)}</span></span><span>₹${p.revenue.toFixed(0)}</span></div>`).join("");
+    const grand = products.reduce((s,p)=>s+p.revenue,0);
+    $("prTotal").textContent = label + " மொத்தம் (" + products.length + " பொருட்கள்): ₹" + grand.toFixed(0);
+  }
+  function openProductReport(){
+    prMode = "daily";
+    $("prModeDaily").classList.add("active");
+    $("prModeMonthly").classList.remove("active");
+    $("prDateInput").style.display = "block";
+    $("prMonthInput").style.display = "none";
+    if(!$("prDateInput").value) $("prDateInput").value = todayDateOnly();
+    if(!$("prMonthInput").value) $("prMonthInput").value = todayDateOnly().slice(0,7);
+    renderProductReport();
+    $("productReportOverlay").classList.add("show");
+  }
+  $("prModeDaily").addEventListener("click", () => {
+    prMode = "daily";
+    $("prModeDaily").classList.add("active");
+    $("prModeMonthly").classList.remove("active");
+    $("prDateInput").style.display = "block";
+    $("prMonthInput").style.display = "none";
+    renderProductReport();
+  });
+  $("prModeMonthly").addEventListener("click", () => {
+    prMode = "monthly";
+    $("prModeMonthly").classList.add("active");
+    $("prModeDaily").classList.remove("active");
+    $("prMonthInput").style.display = "block";
+    $("prDateInput").style.display = "none";
+    renderProductReport();
+  });
+  $("prDateInput").addEventListener("change", renderProductReport);
+  $("prMonthInput").addEventListener("change", renderProductReport);
+  $("closeProductReport").addEventListener("click", () => {
+    $("productReportOverlay").classList.remove("show");
   });
 
   function drawPaymentPieChart(dayList){
@@ -4195,6 +4407,42 @@
       const raw = localStorage.getItem(todayKey());
       return raw ? JSON.parse(raw) : [];
     }catch(e){ return []; }
+  }
+
+  // ---- Reports data layer: every past day's bills are already saved
+  // under "kadai:sales:YYYY-MM-DD" (one key per day) — these just read
+  // and aggregate across those keys for the new Reports screens.
+  function getSalesForDate(dateStr){
+    try{
+      const raw = localStorage.getItem("kadai:sales:" + dateStr);
+      return raw ? JSON.parse(raw) : [];
+    }catch(e){ return []; }
+  }
+  function getAllSalesDates(){
+    const dates = [];
+    for(let i=0;i<localStorage.length;i++){
+      const k = localStorage.key(i);
+      if(k && k.indexOf("kadai:sales:") === 0) dates.push(k.slice("kadai:sales:".length));
+    }
+    return dates.sort();
+  }
+  function getSalesForMonth(monthStr){ // monthStr = "YYYY-MM"
+    const dates = getAllSalesDates().filter(d => d.startsWith(monthStr));
+    return dates.map(d => ({ date: d, bills: getSalesForDate(d) }));
+  }
+  // Aggregates a set of bills into per-item totals (qty + revenue),
+  // sorted by revenue so the best-sellers show first — used by the
+  // Product-wise Sales report.
+  function aggregateProductSales(billsArray){
+    const totals = {};
+    billsArray.forEach(bill => {
+      (bill.items || []).forEach(it => {
+        if(!totals[it.name]) totals[it.name] = { name: it.name, qty: 0, revenue: 0 };
+        totals[it.name].qty += it.qty;
+        totals[it.name].revenue += it.price * it.qty;
+      });
+    });
+    return Object.values(totals).sort((a,b) => b.revenue - a.revenue);
   }
 
   function csvEscape(v){
@@ -4845,7 +5093,7 @@
     $("standbyOverlay").classList.remove("show");
   });
 
-  [$("settingsOverlay"), $("historyOverlay"), $("paymentOverlay"), $("receiptOverlay"), $("standbyOverlay"), $("reviewOverlay"), $("voiceConfirmOverlay"), $("variantPickerOverlay"), $("itemVariantsOverlay"), $("purchaseBillOverlay"), $("purchaseBillFormOverlay"), $("purchaseBillDetailOverlay"), $("pbPayOverlay"), $("stockLedgerOverlay"), $("stockLedgerDetailOverlay")].forEach(ov => {
+  [$("settingsOverlay"), $("historyOverlay"), $("paymentOverlay"), $("receiptOverlay"), $("standbyOverlay"), $("reviewOverlay"), $("voiceConfirmOverlay"), $("variantPickerOverlay"), $("itemVariantsOverlay"), $("purchaseBillOverlay"), $("purchaseBillFormOverlay"), $("purchaseBillDetailOverlay"), $("pbPayOverlay"), $("stockLedgerOverlay"), $("stockLedgerDetailOverlay"), $("reportsHubOverlay"), $("salesReportOverlay"), $("productReportOverlay")].forEach(ov => {
     ov.addEventListener("click", (e)=>{ if(e.target === ov) ov.classList.remove("show"); });
   });
 
