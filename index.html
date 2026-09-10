@@ -4898,28 +4898,88 @@
     return -1;
   }
   // rows = array-of-arrays straight from XLSX.utils.sheet_to_json(sheet,{header:1}).
-  // Tries to find Item/Qty/Rate by column HEADER NAME first (works for any
-  // column order); if no header is recognizable at all, falls back to
-  // assuming the first three columns are Item, Qty, Rate in that order.
+  // Scans the first several rows (not just row 1) for whichever one looks
+  // most like a real header — real invoices often have a company
+  // letterhead, GSTIN, address etc. above the actual item table.
+  function pbFindHeaderRow(rows){
+    let best = null, bestScore = 0;
+    const scanLimit = Math.min(rows.length, 15);
+    for(let r=0; r<scanLimit; r++){
+      const row = rows[r];
+      if(!row) continue;
+      const nameCol = pbGuessColumnIndex(row, PB_IMPORT_HEADER_KEYWORDS.name);
+      const qtyCol = pbGuessColumnIndex(row, PB_IMPORT_HEADER_KEYWORDS.qty);
+      const rateCol = pbGuessColumnIndex(row, PB_IMPORT_HEADER_KEYWORDS.rate);
+      const score = (nameCol>=0?1:0) + (qtyCol>=0?1:0) + (rateCol>=0?1:0);
+      if(score > bestScore){ bestScore = score; best = {idx:r, nameCol, qtyCol, rateCol}; }
+    }
+    return bestScore >= 2 ? best : null; // need at least 2 of the 3 columns recognized to trust it
+  }
+  // Some invoice templates squeeze several items' Qty/Price into ONE
+  // cell, line-break separated (e.g. "30.00\n3.00\n1.00" for 3 items),
+  // but don't always do the same for the Item Name cell. When the name
+  // cell has no matching line-breaks, this tries splitting it right
+  // after each weight/count marker instead — "Basmati Rice 5kg
+  // Sunflower Oil 1L" → ["Basmati Rice 5kg", "Sunflower Oil 1L"] — since
+  // that's how most Indian grocery invoices name their items.
+  function pbSplitNameByUnitMarkers(blob, expectedCount){
+    const re = /\d+\.?\d*\s?(kg|kgs|g|gm|gms|l|ltr|ltrs|ml|pcs?|pkt|pack|packs|box|boxes|dozen|nos)\.?/gi;
+    const parts = [];
+    let lastEnd = 0, m;
+    while((m = re.exec(blob)) !== null){
+      parts.push(blob.slice(lastEnd, m.index + m[0].length).trim());
+      lastEnd = m.index + m[0].length;
+    }
+    if(lastEnd < blob.length) parts.push(blob.slice(lastEnd).trim());
+    const cleaned = parts.filter(Boolean);
+    return cleaned.length === expectedCount ? cleaned : null;
+  }
   function pbParseImportRows(rows){
     if(!rows || rows.length === 0) return [];
-    let nameCol = pbGuessColumnIndex(rows[0], PB_IMPORT_HEADER_KEYWORDS.name);
-    let qtyCol = pbGuessColumnIndex(rows[0], PB_IMPORT_HEADER_KEYWORDS.qty);
-    let rateCol = pbGuessColumnIndex(rows[0], PB_IMPORT_HEADER_KEYWORDS.rate);
-    let dataStart = 1;
-    if(nameCol === -1 && qtyCol === -1 && rateCol === -1){
-      nameCol = 0; qtyCol = 1; rateCol = 2;
-      dataStart = 0; // no header row to skip — every row is data
+    const header = pbFindHeaderRow(rows);
+    let nameCol, qtyCol, rateCol, dataStart;
+    if(header){
+      ({nameCol, qtyCol, rateCol} = header);
+      dataStart = header.idx + 1;
+    } else {
+      // No recognizable header anywhere — assume a plain 3-column sheet.
+      nameCol = 0; qtyCol = 1; rateCol = 2; dataStart = 0;
     }
     const items = [];
     for(let r=dataStart; r<rows.length; r++){
       const row = rows[r];
       if(!row || row.length === 0) continue;
-      const name = nameCol>=0 ? String(row[nameCol]||"").trim() : "";
-      const qty = qtyCol>=0 ? parseFloat(row[qtyCol]) : NaN;
-      const rate = rateCol>=0 ? parseFloat(row[rateCol]) : NaN;
-      if(!name || isNaN(qty) || isNaN(rate)) continue; // skip anything that doesn't look like a real item line
-      items.push({name, qty, rate});
+      const nameCell = nameCol>=0 ? String(row[nameCol]||"").trim() : "";
+      const qtyCell = qtyCol>=0 ? String(row[qtyCol]||"").trim() : "";
+      const rateCell = rateCol>=0 ? String(row[rateCol]||"").trim() : "";
+      if(!nameCell) continue;
+      const qtyParts = qtyCell.split("\n").map(s=>s.trim()).filter(Boolean);
+      const rateParts = rateCell.split("\n").map(s=>s.trim()).filter(Boolean);
+      let nameParts = nameCell.split("\n").map(s=>s.trim()).filter(Boolean);
+      const n = Math.max(qtyParts.length, rateParts.length, 1);
+      if(nameParts.length !== n){
+        // Name cell isn't split the same way as Qty/Price — try the
+        // unit-marker heuristic; if that doesn't line up either, treat
+        // it as one (possibly merged) item so at least something
+        // imports, rather than silently dropping the whole row.
+        nameParts = pbSplitNameByUnitMarkers(nameCell, n) || [nameCell];
+      }
+      const count = Math.min(nameParts.length, n);
+      for(let i=0;i<count;i++){
+        const name = nameParts[i];
+        const qty = parseFloat(qtyParts[i]);
+        const rate = parseFloat(rateParts[i]);
+        if(!name || isNaN(qty) || isNaN(rate)) continue;
+        items.push({name, qty, rate});
+      }
+      // Fallback: nothing usable split out, but the row clearly had a
+      // name — import it as one line with whatever single number was
+      // found, so the user has something to correct instead of nothing.
+      if(count === 0 && nameCell){
+        const qty = parseFloat(qtyParts[0]);
+        const rate = parseFloat(rateParts[0]);
+        if(!isNaN(qty) && !isNaN(rate)) items.push({name: nameCell, qty, rate});
+      }
     }
     return items;
   }
