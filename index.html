@@ -691,6 +691,9 @@
     <div class="sheet-handle"></div>
     <div class="sheet-title">📦 கொள்முதல் பில்கள் (Purchase Bills) <button class="icon-btn" id="closePurchaseBill">✕</button></div>
     <button class="save-btn" id="newPurchaseBillBtn" style="margin-top:0;">+ புதிய கொள்முதல் பில்</button>
+    <button class="btn btn-history" id="importPurchaseBillBtn" style="width:100%;margin-top:10px;">📥 Excel / CSV-ல் இருந்து Import</button>
+    <input type="file" id="importPurchaseBillFile" accept=".xlsx,.xls,.csv" style="display:none;">
+    <div class="divider-note" style="margin-top:6px;">💡 File-ல் Item/Qty/Rate (அல்லது பொருள்/எண்ணிக்கை/விலை) என்ற Column தலைப்புகள் இருந்தால் தானாக கண்டுபிடிக்கும். தலைப்பு இல்லையென்றால், முதல் 3 Columns Item, Qty, Rate என எடுத்துக்கொள்ளும். Import ஆனதும் நீங்கள் சரிபார்த்து Save பண்ணும் வரை எதுவும் சேமிக்கப்படாது.</div>
     <div class="history-day-total" id="purchaseBillTotalDue" style="margin-top:14px;"></div>
     <div id="purchaseBillList" style="margin-top:6px;"></div>
     <div class="divider-note">💡 உங்கள் கடைக்கு பொருள் வாங்கும்போது (எ.கா. ராமேஷ் ட்ரேடர்ஸ்) கிடைக்கும் Invoice-ஐ இங்கு பதிவு செய்து, செலுத்திய தொகை/மீதி நிலுவையை கண்காணிக்கலாம்.</div>
@@ -4863,6 +4866,107 @@
   }
 
   $("newPurchaseBillBtn").addEventListener("click", () => openPurchaseBillForm(null));
+
+  // ---- Excel/CSV import for Purchase Bills ----
+  // Reads a supplier's spreadsheet (Item/Qty/Rate columns, in any common
+  // naming/order) and pre-fills a brand-new Purchase Bill form with it —
+  // nothing is ever saved automatically. The shop owner still has to
+  // review the familiar editable item rows and tap "💾 பில் சேமி"
+  // themselves, same as typing it by hand, so a misread cell just means
+  // fixing one row, never a silently wrong number in real data.
+  function loadScriptOnce(src){
+    return new Promise((resolve, reject) => {
+      if(document.querySelector('script[data-src="'+src+'"]')){ resolve(); return; }
+      const s = document.createElement("script");
+      s.src = src;
+      s.dataset.src = src;
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error("load failed"));
+      document.head.appendChild(s);
+    });
+  }
+  const PB_IMPORT_HEADER_KEYWORDS = {
+    name: ["item","product","name","description","stock","பொருள்"],
+    qty: ["qty","quantity","units","nos","எண்ணிக்கை"],
+    rate: ["rate","price","cost","unit price","விலை"]
+  };
+  function pbGuessColumnIndex(headerRow, keywords){
+    for(let i=0;i<headerRow.length;i++){
+      const cell = String(headerRow[i]||"").toLowerCase().trim();
+      if(keywords.some(k => cell.includes(k))) return i;
+    }
+    return -1;
+  }
+  // rows = array-of-arrays straight from XLSX.utils.sheet_to_json(sheet,{header:1}).
+  // Tries to find Item/Qty/Rate by column HEADER NAME first (works for any
+  // column order); if no header is recognizable at all, falls back to
+  // assuming the first three columns are Item, Qty, Rate in that order.
+  function pbParseImportRows(rows){
+    if(!rows || rows.length === 0) return [];
+    let nameCol = pbGuessColumnIndex(rows[0], PB_IMPORT_HEADER_KEYWORDS.name);
+    let qtyCol = pbGuessColumnIndex(rows[0], PB_IMPORT_HEADER_KEYWORDS.qty);
+    let rateCol = pbGuessColumnIndex(rows[0], PB_IMPORT_HEADER_KEYWORDS.rate);
+    let dataStart = 1;
+    if(nameCol === -1 && qtyCol === -1 && rateCol === -1){
+      nameCol = 0; qtyCol = 1; rateCol = 2;
+      dataStart = 0; // no header row to skip — every row is data
+    }
+    const items = [];
+    for(let r=dataStart; r<rows.length; r++){
+      const row = rows[r];
+      if(!row || row.length === 0) continue;
+      const name = nameCol>=0 ? String(row[nameCol]||"").trim() : "";
+      const qty = qtyCol>=0 ? parseFloat(row[qtyCol]) : NaN;
+      const rate = rateCol>=0 ? parseFloat(row[rateCol]) : NaN;
+      if(!name || isNaN(qty) || isNaN(rate)) continue; // skip anything that doesn't look like a real item line
+      items.push({name, qty, rate});
+    }
+    return items;
+  }
+  function openPurchaseBillFormWithImportedItems(items, traderNameGuess){
+    openPurchaseBillForm(null);
+    $("pbItemsList").innerHTML = "";
+    pbItemRowSeq = 0;
+    if(items.length === 0){ pbAddItemRow(); }
+    else{ items.forEach(it => pbAddItemRow(it)); }
+    pbRecomputeTotal();
+    if(traderNameGuess) $("pbTraderName").value = traderNameGuess;
+    setStatus("📥 " + items.length + " பொருட்கள் Import செய்யப்பட்டன — சரிபார்த்து 💾 சேமிக்கவும்");
+  }
+  $("importPurchaseBillBtn").addEventListener("click", async () => {
+    setStatus("📥 Import Reader ஏற்றப்படுகிறது...");
+    try{
+      await loadScriptOnce("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js");
+    }catch(e){
+      setStatus("⚠️ Import Reader ஏற்ற முடியவில்லை. Internet இணைப்பை சரிபார்க்கவும்.");
+      return;
+    }
+    $("importPurchaseBillFile").click();
+  });
+  $("importPurchaseBillFile").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    e.target.value = ""; // allow re-selecting the same file again later
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try{
+        const data = new Uint8Array(ev.target.result);
+        const workbook = XLSX.read(data, {type:"array"});
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, {header:1});
+        const items = pbParseImportRows(rows);
+        if(items.length === 0){
+          alert("இந்த File-ல் இருந்து பொருட்களை கண்டுபிடிக்க முடியவில்லை. Columns Item/Qty/Rate என்று இருக்கிறதா சரிபார்க்கவும், அல்லது கைமுறையாக பில் போடவும்.");
+          return;
+        }
+        const traderGuess = file.name.replace(/\.(xlsx|xls|csv)$/i, "").trim();
+        openPurchaseBillFormWithImportedItems(items, traderGuess);
+      }catch(err){
+        alert("இந்த File-ஐ படிக்க முடியவில்லை. இது சரியான Excel/CSV File-ஆ எனச் சரிபார்க்கவும்.");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
   $("closePurchaseBillForm").addEventListener("click", () => {
     $("purchaseBillFormOverlay").classList.remove("show");
   });
