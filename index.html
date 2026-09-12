@@ -537,6 +537,18 @@
     <div class="field-label">கடை மொபைல் நம்பர் (பில்-ல் காட்ட)</div>
     <input type="text" id="shopPhoneInput" placeholder="எ.கா. 9876543210" inputmode="tel" maxlength="15">
 
+    <div class="field-label">GSTIN (GST பில் போட வேண்டுமெனில் மட்டும்)</div>
+    <input type="text" id="shopGstinInput" placeholder="எ.கா. 33AAACH7409R1ZZ" maxlength="15" style="text-transform:uppercase;">
+
+    <div class="field-label">Default GST விகிதம் (%)</div>
+    <select id="shopGstRateInput">
+      <option value="5">5%</option>
+      <option value="12">12%</option>
+      <option value="18" selected>18%</option>
+      <option value="28">28%</option>
+    </select>
+    <div class="divider-note" style="margin-top:6px;">💡 விலைகள் GST-உடன் சேர்ந்தே (Inclusive) என்று கருதப்படும் — பில் தொகையில் இருந்து வரி பிரிக்கப்படும், மேலே கூட்டப்படாது.</div>
+
     <div class="field-label">புதிய பொருள் பெயர்</div>
     <div class="field-row">
       <input type="text" id="newItemName" placeholder="எ.கா. அரிசி">
@@ -982,6 +994,13 @@
     </div>
     <div class="divider-note" id="editDiffNote" style="display:none;text-align:center;margin-top:0;"></div>
 
+    <div class="field-label" style="margin-top:0;color:var(--chalk);text-align:left;">பில் வகை</div>
+    <div class="pay-method-row" id="gstModeRow">
+      <button type="button" class="pay-method-btn active" id="gstModeNo" data-mode="no"><span class="emoji">🧾</span>சாதாரண பில்</button>
+      <button type="button" class="pay-method-btn" id="gstModeYes" data-mode="yes"><span class="emoji">📋</span>GST பில்</button>
+    </div>
+    <div id="gstBreakdownPreview" style="display:none;"></div>
+
     <div class="pay-method-row">
       <button class="pay-method-btn" id="payCashBtn"><span class="emoji">💵</span>பணம் (Cash)</button>
       <button class="pay-method-btn" id="payBankBtn"><span class="emoji">🏦</span>வங்கி / UPI</button>
@@ -1080,6 +1099,8 @@
   const STORAGE_KEY_ITEMS = "kadai:items";
   const STORAGE_KEY_SHOPNAME = "kadai:shopname";
   const STORAGE_KEY_SHOPPHONE = "kadai:shopphone";
+  const STORAGE_KEY_SHOPGSTIN = "kadai:shopgstin";
+  const STORAGE_KEY_SHOPGSTRATE = "kadai:shopgstrate";
   const STORAGE_KEY_STANDBY = "kadai:standby";
   const STORAGE_KEY_CURRENTBILL = "kadai:currentbill";
   const STORAGE_KEY_LEDGER = "kadai:ledger";
@@ -1191,6 +1212,8 @@
   let purchaseBills = [];
   let shopName = "என் கடை";
   let shopPhone = "";
+  let shopGstin = "";
+  let shopGstRate = 18;
   let recognition = null;
   let listeningTarget = null;
 
@@ -1223,6 +1246,12 @@
       shopPhone = localStorage.getItem(STORAGE_KEY_SHOPPHONE) || "";
     }catch(e){ shopPhone = ""; }
     try{
+      shopGstin = localStorage.getItem(STORAGE_KEY_SHOPGSTIN) || "";
+    }catch(e){ shopGstin = ""; }
+    try{
+      shopGstRate = parseFloat(localStorage.getItem(STORAGE_KEY_SHOPGSTRATE)) || 18;
+    }catch(e){ shopGstRate = 18; }
+    try{
       const raw3 = localStorage.getItem(STORAGE_KEY_STANDBY);
       standbyBills = raw3 ? JSON.parse(raw3) : [];
     }catch(e){ standbyBills = []; }
@@ -1252,6 +1281,8 @@
     $("shopNameDisplay").textContent = shopName;
     $("shopNameInput").value = shopName;
     $("shopPhoneInput").value = shopPhone;
+    $("shopGstinInput").value = shopGstin;
+    $("shopGstRateInput").value = String(shopGstRate);
     renderItems();
     updateStandbyBadge();
     updateLedgerBadge();
@@ -1266,6 +1297,12 @@
   }
   async function saveShopPhone(){
     try{ localStorage.setItem(STORAGE_KEY_SHOPPHONE, shopPhone); }catch(e){}
+  }
+  async function saveShopGstin(){
+    try{ localStorage.setItem(STORAGE_KEY_SHOPGSTIN, shopGstin); }catch(e){}
+  }
+  async function saveShopGstRate(){
+    try{ localStorage.setItem(STORAGE_KEY_SHOPGSTRATE, String(shopGstRate)); }catch(e){}
   }
   function saveCurrentBill(){
     try{ localStorage.setItem(STORAGE_KEY_CURRENTBILL, JSON.stringify(bill)); }catch(e){}
@@ -2757,6 +2794,41 @@
   });
 
   let payMethod = null;
+  // True only while the shop owner has chosen "GST பில்" for THIS bill —
+  // reset to false every time the payment sheet opens, since GST vs
+  // regular is a per-bill choice, not a standing setting.
+  let gstMode = false;
+  function computeGstBreakdown(total){
+    const rate = shopGstRate;
+    const taxable = Math.round((total / (1 + rate/100)) * 100) / 100;
+    const taxAmt = Math.round((total - taxable) * 100) / 100;
+    const half = Math.round((taxAmt/2) * 100) / 100;
+    return { gstin: shopGstin, rate, taxable, cgst: half, sgst: taxAmt - half };
+  }
+  function updateGstBreakdownPreview(){
+    const preview = $("gstBreakdownPreview");
+    if(!gstMode){ preview.style.display = "none"; return; }
+    const total = parseFloat($("payTotalAmt").textContent) || 0;
+    const b = computeGstBreakdown(total);
+    preview.style.display = "block";
+    preview.innerHTML = `<div class="divider-note" style="margin-top:8px;text-align:left;">
+      வரி விலக்கு மதிப்பு: ₹${b.taxable.toFixed(2)}<br>
+      CGST (${(b.rate/2).toFixed(1)}%): ₹${b.cgst.toFixed(2)} · SGST (${(b.rate/2).toFixed(1)}%): ₹${b.sgst.toFixed(2)}
+      ${!shopGstin ? '<br>⚠️ GSTIN இன்னும் Settings-ல் சேர்க்கப்படவில்லை.' : ''}
+    </div>`;
+  }
+  $("gstModeNo").addEventListener("click", () => {
+    gstMode = false;
+    $("gstModeNo").classList.add("active");
+    $("gstModeYes").classList.remove("active");
+    updateGstBreakdownPreview();
+  });
+  $("gstModeYes").addEventListener("click", () => {
+    gstMode = true;
+    $("gstModeYes").classList.add("active");
+    $("gstModeNo").classList.remove("active");
+    updateGstBreakdownPreview();
+  });
   // When a bill is reloaded from History for editing (see the 🔁 button
   // in the history list), this holds { billNo, dateKey } for the original
   // record so finalizeBill() can UPDATE that record in place instead of
@@ -2875,6 +2947,10 @@
     $("creditCustomerName").value = "";
     $("balancePanel").style.display = "none";
     $("confirmPayBtn").disabled = true;
+    gstMode = false;
+    $("gstModeNo").classList.add("active");
+    $("gstModeYes").classList.remove("active");
+    $("gstBreakdownPreview").style.display = "none";
 
     const editDiffNote = $("editDiffNote");
     let diff = 0;
@@ -3231,7 +3307,7 @@
     } else {
       return;
     }
-    const receipt = await finalizeBill(payMethod, total, received, balance, customerName, speechBalance);
+    const receipt = await finalizeBill(payMethod, total, received, balance, customerName, speechBalance, gstMode);
     editOriginalBill = null;
     $("paymentOverlay").classList.remove("show");
     openReceiptSheet(receipt);
@@ -3244,8 +3320,9 @@
 
   let lastFinishedItems = null;
 
-  async function finalizeBill(method, total, received, balance, customerName, speechBalance){
+  async function finalizeBill(method, total, received, balance, customerName, speechBalance, gstModeForThisBill){
     if(typeof speechBalance !== "number") speechBalance = balance;
+    const gst = gstModeForThisBill ? computeGstBreakdown(total) : null;
     const itemTypes = bill.length;
     const totalQtyFinal = bill.reduce((s,b)=>s+b.qty,0);
     const key = todayKey();
@@ -3284,10 +3361,10 @@
       if(originalEntry.method === "credit" && originalEntry.customerName){
         removeLedgerCreditByBillNo(originalEntry.customerName, billNo);
       }
-      dayList[existingIdx] = { billNo, time, total, method, received, balance, customerName: customerName || null, items: itemsSnapshot };
+      dayList[existingIdx] = { billNo, time, total, method, received, balance, customerName: customerName || null, items: itemsSnapshot, gst };
     } else {
       billNo = dayList.length + 1;
-      dayList.push({ billNo, time, total, method, received, balance, customerName: customerName || null, items: itemsSnapshot });
+      dayList.push({ billNo, time, total, method, received, balance, customerName: customerName || null, items: itemsSnapshot, gst });
     }
     try{ localStorage.setItem(key, JSON.stringify(dayList)); }catch(e){}
 
@@ -3336,7 +3413,7 @@
     lastFinishedItems = itemsSnapshot;
     bill = [];
     renderBill();
-    return { billNo, time, total, method, received, balance, customerName: customerName || null, items: itemsSnapshot };
+    return { billNo, time, total, method, received, balance, customerName: customerName || null, items: itemsSnapshot, gst };
   }
 
   function openReceiptSheet(receipt){
@@ -3346,6 +3423,12 @@
       <div class="receipt-row"><span>${escapeHtml(it.name)} × ${formatQty(it.qty)}</span><span>₹${(it.price*it.qty).toFixed(0)}</span></div>
     `).join("");
     rows += `<div class="receipt-row total"><span>மொத்தம்</span><span>₹${receipt.total.toFixed(0)}</span></div>`;
+    if(receipt.gst){
+      rows += `<div class="receipt-row"><span style="font-size:12px;">வரி விலக்கு மதிப்பு</span><span style="font-size:12px;">₹${receipt.gst.taxable.toFixed(2)}</span></div>`;
+      rows += `<div class="receipt-row"><span style="font-size:12px;">CGST ${(receipt.gst.rate/2).toFixed(1)}%</span><span style="font-size:12px;">₹${receipt.gst.cgst.toFixed(2)}</span></div>`;
+      rows += `<div class="receipt-row"><span style="font-size:12px;">SGST ${(receipt.gst.rate/2).toFixed(1)}%</span><span style="font-size:12px;">₹${receipt.gst.sgst.toFixed(2)}</span></div>`;
+      if(receipt.gst.gstin) rows += `<div class="receipt-row"><span style="font-size:12px;">GSTIN</span><span style="font-size:12px;">${escapeHtml(receipt.gst.gstin)}</span></div>`;
+    }
     rows += `<div class="receipt-row"><span>${methodLabel}</span><span></span></div>`;
     if(receipt.method === "cash"){
       rows += `<div class="receipt-row"><span>பெற்றது</span><span>₹${receipt.received.toFixed(0)}</span></div>`;
@@ -3386,6 +3469,13 @@
     });
     html += `</tbody></table>`;
     html += `<div class="pr-total-row"><span class="lbl">மொத்தம்</span><span class="amt">₹${receipt.total.toFixed(0)}</span></div>`;
+    if(receipt.gst){
+      html += `<div class="pr-meta" style="text-align:left;">
+        வரி விலக்கு மதிப்பு: ₹${receipt.gst.taxable.toFixed(2)}<br>
+        CGST ${(receipt.gst.rate/2).toFixed(1)}%: ₹${receipt.gst.cgst.toFixed(2)} &nbsp; SGST ${(receipt.gst.rate/2).toFixed(1)}%: ₹${receipt.gst.sgst.toFixed(2)}
+        ${receipt.gst.gstin ? `<br>GSTIN: ${escapeHtml(receipt.gst.gstin)}` : ``}
+      </div>`;
+    }
     html += `<div class="pr-pay-info">${methodLabel}`;
     if(receipt.method === "cash"){
       html += ` • பெற்றது ₹${receipt.received.toFixed(0)} • ${receipt.balance>=0?"மீதம்":"தேவை"} ₹${Math.abs(receipt.balance).toFixed(0)}`;
@@ -3410,6 +3500,12 @@
     });
     lines.push("-----------------------------");
     lines.push("மொத்தம்: ₹" + receipt.total.toFixed(0));
+    if(receipt.gst){
+      lines.push("வரி விலக்கு மதிப்பு: ₹" + receipt.gst.taxable.toFixed(2));
+      lines.push("CGST " + (receipt.gst.rate/2).toFixed(1) + "%: ₹" + receipt.gst.cgst.toFixed(2));
+      lines.push("SGST " + (receipt.gst.rate/2).toFixed(1) + "%: ₹" + receipt.gst.sgst.toFixed(2));
+      if(receipt.gst.gstin) lines.push("GSTIN: " + receipt.gst.gstin);
+    }
     lines.push(methodLabel);
     if(receipt.method === "cash"){
       lines.push("பெற்றது: ₹" + receipt.received.toFixed(0));
@@ -3478,6 +3574,7 @@
     });
     y += 16; // dashed line + gap
     y += lineH + 8; // total row
+    if(receipt.gst) y += smallLineH * (receipt.gst.gstin ? 3 : 2); // taxable value, CGST+SGST, GSTIN
     y += smallLineH; // method
     if(receipt.method === "cash"){
       y += smallLineH * 2;
@@ -3558,6 +3655,19 @@
     ctx.textAlign = "right";
     ctx.fillText("₹" + receipt.total.toFixed(0), W - PAD, cy);
     cy += lineH + 8;
+
+    if(receipt.gst){
+      ctx.font = "14px 'Noto Sans Tamil', sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText("வரி விலக்கு மதிப்பு: ₹" + receipt.gst.taxable.toFixed(2), PAD, cy);
+      cy += smallLineH;
+      ctx.fillText("CGST " + (receipt.gst.rate/2).toFixed(1) + "%: ₹" + receipt.gst.cgst.toFixed(2) + "  SGST: ₹" + receipt.gst.sgst.toFixed(2), PAD, cy);
+      cy += smallLineH;
+      if(receipt.gst.gstin){
+        ctx.fillText("GSTIN: " + receipt.gst.gstin, PAD, cy);
+        cy += smallLineH;
+      }
+    }
 
     ctx.textAlign = "left";
     ctx.font = "18px 'Noto Sans Tamil', sans-serif";
@@ -3925,6 +4035,15 @@
   $("shopPhoneInput").addEventListener("change", () => {
     shopPhone = $("shopPhoneInput").value.trim();
     saveShopPhone();
+  });
+  $("shopGstinInput").addEventListener("change", () => {
+    shopGstin = $("shopGstinInput").value.trim().toUpperCase();
+    $("shopGstinInput").value = shopGstin;
+    saveShopGstin();
+  });
+  $("shopGstRateInput").addEventListener("change", () => {
+    shopGstRate = parseFloat($("shopGstRateInput").value) || 18;
+    saveShopGstRate();
   });
   $("deviceNameInput").addEventListener("change", () => {
     deviceName = $("deviceNameInput").value.trim();
