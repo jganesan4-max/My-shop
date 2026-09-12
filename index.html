@@ -739,10 +739,24 @@
     <button class="btn btn-history" id="pbAddItemRowBtn" style="width:100%;margin-top:8px;">+ பொருள் வரிசை சேர்</button>
 
     <div class="review-total-row" style="margin-top:16px;">
-      <span class="lbl">பில் மொத்தம் (Items கூட்டல்)</span>
+      <span class="lbl">பொருட்கள் மொத்தம் (Tax இல்லாமல்)</span>
       <span class="amt">₹<span id="pbComputedTotal">0</span></span>
     </div>
-    <div class="field-label">பில் மொத்தம் (தேவைப்பட்டால் மட்டும் திருத்தவும்)</div>
+
+    <div class="field-label" style="margin-top:14px;">இந்த பில்-ல் GST இருக்கா?</div>
+    <div class="pay-method-row" id="pbGstModeRow">
+      <button type="button" class="pay-method-btn active" id="pbGstNo" data-mode="no"><span class="emoji">🧾</span>Non-GST (Rate-ல் அடங்கும்)</button>
+      <button type="button" class="pay-method-btn" id="pbGstYes" data-mode="yes"><span class="emoji">📋</span>GST (Rate + Tax)</button>
+    </div>
+    <select id="pbGstRateSelect" style="display:none;margin-top:8px;">
+      <option value="5">5%</option>
+      <option value="12">12%</option>
+      <option value="18" selected>18%</option>
+      <option value="28">28%</option>
+    </select>
+    <div id="pbGstBreakdown" style="display:none;"></div>
+
+    <div class="field-label" style="margin-top:14px;">பில் மொத்தம் (தேவைப்பட்டால் மட்டும் திருத்தவும்)</div>
     <input type="number" id="pbBillTotalOverride" inputmode="decimal">
 
     <div class="field-label" style="margin-top:18px;">💳 பணம் செலுத்தல் முறை</div>
@@ -783,6 +797,7 @@
       <span class="lbl">பில் மொத்தம்</span>
       <span class="amt">₹<span id="pbDetailTotal">0</span></span>
     </div>
+    <div id="pbDetailGstInfo" style="display:none;"></div>
     <div class="field-label" style="margin-top:14px;">செலுத்திய பணம்</div>
     <div id="pbDetailPaymentsList"></div>
     <div class="balance-panel">
@@ -847,6 +862,7 @@
     <button class="btn btn-history" id="reportsOpenLiveBtn" style="width:100%;margin-top:6px;">📒 இன்றைய விற்பனை (Live, 24hr)</button>
     <button class="btn btn-history" id="reportsOpenSalesBtn" style="width:100%;margin-top:10px;">📈 விற்பனை அறிக்கை (நாள் / மாதம்)</button>
     <button class="btn btn-history" id="reportsOpenProductBtn" style="width:100%;margin-top:10px;">📦 பொருள் வாரியான விற்பனை</button>
+    <button class="btn btn-history" id="reportsOpenDailyActivityBtn" style="width:100%;margin-top:10px;">📅 இன்றைய அனைத்து செயல்பாடுகள்</button>
     <button class="btn btn-history" id="reportsOpenLedgerBtn" style="width:100%;margin-top:10px;">💰 கடன் கணக்கு (Credit Ledger)</button>
     <button class="btn btn-history" id="reportsOpenPurchaseBtn" style="width:100%;margin-top:10px;">🧾 கொள்முதல் பில் (Purchase Ledger)</button>
     <button class="btn btn-history" id="reportsOpenStockBtn" style="width:100%;margin-top:10px;">📊 இருப்பு புத்தகம் (Stock Book)</button>
@@ -883,6 +899,42 @@
     <div class="history-day-total" id="prTotal" style="margin-top:14px;"></div>
     <canvas id="prBarChart" width="600" height="260" style="width:100%;height:auto;margin-top:10px;display:none;"></canvas>
     <div id="prList" style="margin-top:6px;"></div>
+  </div>
+</div>
+
+<!-- Daily Business Activities: everything that happened in the app on a
+     chosen date — sales, purchases, credit collected, supplier payments —
+     all in one place, so the shop owner never has to check 4 separate
+     screens to know how the day went. -->
+<div class="overlay" id="dailyActivityOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">📅 இன்றைய அனைத்து செயல்பாடுகள் <button class="icon-btn" id="closeDailyActivity" title="பட்டியலுக்கு திரும்ப">←</button></div>
+    <input type="date" id="daDateInput">
+
+    <div class="review-total-row" style="margin-top:14px;">
+      <span class="lbl">🧾 விற்பனை (Sales)</span>
+      <span class="amt" id="daSalesTotal">₹0</span>
+    </div>
+    <div id="daSalesList"></div>
+
+    <div class="review-total-row" style="margin-top:16px;">
+      <span class="lbl">📦 கொள்முதல் (Purchases)</span>
+      <span class="amt" id="daPurchaseTotal">₹0</span>
+    </div>
+    <div id="daPurchaseList"></div>
+
+    <div class="review-total-row" style="margin-top:16px;">
+      <span class="lbl">💰 கடன் வசூல் (Credit Collected)</span>
+      <span class="amt" id="daCreditTotal">₹0</span>
+    </div>
+    <div id="daCreditList"></div>
+
+    <div class="review-total-row" style="margin-top:16px;">
+      <span class="lbl">🏦 வியாபாரிகளுக்கு செலுத்தியது</span>
+      <span class="amt" id="daSupplierTotal">₹0</span>
+    </div>
+    <div id="daSupplierList"></div>
   </div>
 </div>
 
@@ -4364,6 +4416,11 @@
     $("reportsHubOverlay").classList.remove("show");
     openProductReport();
   });
+  $("reportsOpenDailyActivityBtn").addEventListener("click", () => {
+    cameFromReportsHub = true;
+    $("reportsHubOverlay").classList.remove("show");
+    openDailyActivity();
+  });
   $("reportsOpenLedgerBtn").addEventListener("click", () => {
     cameFromReportsHub = true;
     $("reportsHubOverlay").classList.remove("show");
@@ -4549,6 +4606,72 @@
   $("closeProductReport").addEventListener("click", () => {
     $("productReportOverlay").classList.remove("show");
     $("reportsHubOverlay").classList.add("show");
+  });
+
+  // ---- Daily Business Activities: everything that touched the shop on
+  // one chosen date, pulled from the 4 places that already store it —
+  // sales history, Purchase Bills (by date), Credit Ledger entries (by
+  // date), and Purchase Bill payments (by date) — so nothing needs a new
+  // storage format of its own.
+  function getDailyActivity(dateStr){
+    const sales = getSalesForDate(dateStr);
+    const salesTotal = sales.reduce((s,b)=>s+b.total,0);
+
+    const purchases = purchaseBills.filter(pb => pb.date === dateStr);
+    const purchaseTotal = purchases.reduce((s,pb)=>s+(parseFloat(pb.billTotal)||0),0);
+
+    const creditPayments = [];
+    Object.keys(ledger).forEach(name => {
+      (ledger[name]||[]).forEach(e => {
+        if(e.type === "payment" && e.date === dateStr) creditPayments.push({name, amount:e.amount});
+      });
+    });
+    const creditTotal = creditPayments.reduce((s,p)=>s+p.amount,0);
+
+    const supplierPayments = [];
+    purchaseBills.forEach(pb => {
+      (pb.payments||[]).forEach(p => {
+        if(p.date === dateStr) supplierPayments.push({trader: pb.traderName, invoiceNo: pb.invoiceNo, amount: p.amount});
+      });
+    });
+    const supplierTotal = supplierPayments.reduce((s,p)=>s+p.amount,0);
+
+    return { sales, salesTotal, purchases, purchaseTotal, creditPayments, creditTotal, supplierPayments, supplierTotal };
+  }
+  function renderDailyActivity(){
+    const dateStr = $("daDateInput").value;
+    if(!dateStr) return;
+    const a = getDailyActivity(dateStr);
+
+    $("daSalesTotal").textContent = "₹" + a.salesTotal.toFixed(0);
+    $("daSalesList").innerHTML = a.sales.length
+      ? a.sales.map(renderSalesReportRow).join("")
+      : '<div class="divider-note" style="margin-top:0;">இன்று விற்பனை இல்லை</div>';
+
+    $("daPurchaseTotal").textContent = "₹" + a.purchaseTotal.toFixed(0);
+    $("daPurchaseList").innerHTML = a.purchases.length
+      ? a.purchases.map(pb => `<div class="history-row"><span>${escapeHtml(pb.traderName||"")} <span class="pay-tag">Invoice: ${escapeHtml(pb.invoiceNo||"-")}</span></span><span>₹${(parseFloat(pb.billTotal)||0).toFixed(0)}</span></div>`).join("")
+      : '<div class="divider-note" style="margin-top:0;">இன்று கொள்முதல் பில் இல்லை</div>';
+
+    $("daCreditTotal").textContent = "₹" + a.creditTotal.toFixed(0);
+    $("daCreditList").innerHTML = a.creditPayments.length
+      ? a.creditPayments.map(p => `<div class="history-row"><span>${escapeHtml(p.name)}</span><span>₹${p.amount.toFixed(0)}</span></div>`).join("")
+      : '<div class="divider-note" style="margin-top:0;">இன்று கடன் வசூல் இல்லை</div>';
+
+    $("daSupplierTotal").textContent = "₹" + a.supplierTotal.toFixed(0);
+    $("daSupplierList").innerHTML = a.supplierPayments.length
+      ? a.supplierPayments.map(p => `<div class="history-row"><span>${escapeHtml(p.trader||"")} <span class="pay-tag">Invoice: ${escapeHtml(p.invoiceNo||"-")}</span></span><span>₹${p.amount.toFixed(0)}</span></div>`).join("")
+      : '<div class="divider-note" style="margin-top:0;">இன்று வியாபாரிகளுக்கு பணம் செலுத்தவில்லை</div>';
+  }
+  function openDailyActivity(){
+    if(!$("daDateInput").value) $("daDateInput").value = todayDateOnly();
+    renderDailyActivity();
+    $("dailyActivityOverlay").classList.add("show");
+  }
+  $("daDateInput").addEventListener("change", renderDailyActivity);
+  $("closeDailyActivity").addEventListener("click", () => {
+    $("dailyActivityOverlay").classList.remove("show");
+    if(cameFromReportsHub){ cameFromReportsHub = false; $("reportsHubOverlay").classList.add("show"); }
   });
 
   function drawPaymentPieChart(dayList){
@@ -4837,6 +4960,11 @@
   // ---- Purchase Bill form (add / edit) ----
   let pbEditingId = null;
   let pbSelectedMethod = "cash";
+  // True only while GST is toggled ON for the bill currently open in the
+  // form — mirrors the sales-side gstMode, but here tax is ADDED ON TOP
+  // of the entered rate (supplier invoices usually quote rate exclusive
+  // of tax), instead of being extracted from an inclusive price.
+  let pbGstMode = false;
   let pbItemRowSeq = 0;
 
   function pbItemRowHtml(idx, item){
@@ -4917,6 +5045,12 @@
     });
   }
 
+  function pbComputeGstBreakdown(itemsSubtotal){
+    const rate = parseFloat($("pbGstRateSelect").value) || 18;
+    const taxAmt = Math.round((itemsSubtotal * rate/100) * 100) / 100;
+    const half = Math.round((taxAmt/2) * 100) / 100;
+    return { rate, taxable: itemsSubtotal, cgst: half, sgst: taxAmt - half, total: itemsSubtotal + taxAmt };
+  }
   function pbRecomputeTotal(){
     let total = 0;
     $("pbItemsList").querySelectorAll(".pb-item-row").forEach(row => {
@@ -4927,11 +5061,43 @@
       total += amt;
     });
     $("pbComputedTotal").textContent = total.toFixed(2).replace(/\.00$/,"");
+    let finalTotal = total;
+    if(pbGstMode){
+      const b = pbComputeGstBreakdown(total);
+      finalTotal = b.total;
+      $("pbGstBreakdown").style.display = "block";
+      $("pbGstBreakdown").innerHTML = `<div class="divider-note" style="margin-top:6px;text-align:left;">
+        CGST (${(b.rate/2).toFixed(1)}%): ₹${b.cgst.toFixed(2)} · SGST (${(b.rate/2).toFixed(1)}%): ₹${b.sgst.toFixed(2)}<br>
+        <b>GST-உடன் மொத்தம்: ₹${b.total.toFixed(2)}</b>
+      </div>`;
+    } else {
+      $("pbGstBreakdown").style.display = "none";
+    }
     if(!$("pbBillTotalOverride").dataset.userEdited){
-      $("pbBillTotalOverride").value = total ? total.toFixed(2).replace(/\.00$/,"") : "";
+      $("pbBillTotalOverride").value = finalTotal ? finalTotal.toFixed(2).replace(/\.00$/,"") : "";
     }
     pbUpdateBalancePreview();
   }
+  $("pbGstNo").addEventListener("click", () => {
+    pbGstMode = false;
+    $("pbGstNo").classList.add("active");
+    $("pbGstYes").classList.remove("active");
+    $("pbGstRateSelect").style.display = "none";
+    delete $("pbBillTotalOverride").dataset.userEdited;
+    pbRecomputeTotal();
+  });
+  $("pbGstYes").addEventListener("click", () => {
+    pbGstMode = true;
+    $("pbGstYes").classList.add("active");
+    $("pbGstNo").classList.remove("active");
+    $("pbGstRateSelect").style.display = "block";
+    delete $("pbBillTotalOverride").dataset.userEdited;
+    pbRecomputeTotal();
+  });
+  $("pbGstRateSelect").addEventListener("change", () => {
+    delete $("pbBillTotalOverride").dataset.userEdited;
+    pbRecomputeTotal();
+  });
 
   $("pbBillTotalOverride").addEventListener("input", () => {
     $("pbBillTotalOverride").dataset.userEdited = "1";
@@ -4973,6 +5139,17 @@
     $("pbBillTotalOverride").value = pb ? (pb.billTotal !== undefined ? pb.billTotal : "") : "";
     if(pb) $("pbBillTotalOverride").dataset.userEdited = "1";
     pbSelectMethod(pb ? (pb.paymentMethod || "cash") : "cash");
+    pbGstMode = !!(pb && pb.gst);
+    if(pbGstMode){
+      $("pbGstYes").classList.add("active");
+      $("pbGstNo").classList.remove("active");
+      $("pbGstRateSelect").style.display = "block";
+      $("pbGstRateSelect").value = String(pb.gst.rate);
+    } else {
+      $("pbGstNo").classList.add("active");
+      $("pbGstYes").classList.remove("active");
+      $("pbGstRateSelect").style.display = "none";
+    }
     const paidSoFar = pb ? purchaseBillPaid(pb) : 0;
     $("pbPaidAmount").value = pb ? "0" : "0";
     $("pbPaidDate").value = todayDateOnly();
@@ -5166,6 +5343,8 @@
     const billTotal = parseFloat($("pbBillTotalOverride").value) || items.reduce((s,it)=>s+it.amount,0);
     const newPaymentAmt = parseFloat($("pbPaidAmount").value) || 0;
     const paidDate = $("pbPaidDate").value || todayDateOnly();
+    const itemsSubtotal = items.reduce((s,it)=>s+it.amount,0);
+    const gst = pbGstMode ? pbComputeGstBreakdown(itemsSubtotal) : null;
     let stockUnmatched = [];
 
     if(pbEditingId){
@@ -5176,6 +5355,7 @@
         pb.date = $("pbDate").value || todayDateOnly();
         pb.items = items;
         pb.billTotal = billTotal;
+        pb.gst = gst;
         pb.paymentMethod = pbSelectedMethod;
         if(newPaymentAmt > 0){
           pb.payments = pb.payments || [];
@@ -5190,6 +5370,7 @@
         date: $("pbDate").value || todayDateOnly(),
         items,
         billTotal,
+        gst,
         paymentMethod: pbSelectedMethod,
         payments: newPaymentAmt > 0 ? [{ amount: newPaymentAmt, date: paidDate }] : [],
         createdAt: Date.now()
@@ -5235,6 +5416,16 @@
       <td class="num">₹${(parseFloat(it.amount)||0).toFixed(0)}</td>
     </tr>`).join("");
     $("pbDetailTotal").textContent = (parseFloat(pb.billTotal)||0).toFixed(0);
+    const gstInfo = $("pbDetailGstInfo");
+    if(pb.gst){
+      gstInfo.style.display = "block";
+      gstInfo.innerHTML = `<div class="divider-note" style="margin-top:0;text-align:left;">
+        வரி விலக்கு மதிப்பு: ₹${pb.gst.taxable.toFixed(2)}<br>
+        CGST (${(pb.gst.rate/2).toFixed(1)}%): ₹${pb.gst.cgst.toFixed(2)} · SGST (${(pb.gst.rate/2).toFixed(1)}%): ₹${pb.gst.sgst.toFixed(2)}
+      </div>`;
+    } else {
+      gstInfo.style.display = "none";
+    }
     const payments = pb.payments || [];
     $("pbDetailPaymentsList").innerHTML = payments.length
       ? payments.map(p => `<div class="pb-payment-row"><span class="pb-pay-date">📅 ${escapeHtml(p.date)}</span><span class="pb-pay-amt">₹${(parseFloat(p.amount)||0).toFixed(0)}</span></div>`).join("")
@@ -5448,7 +5639,7 @@
     $("standbyOverlay").classList.remove("show");
   });
 
-  [$("settingsOverlay"), $("historyOverlay"), $("paymentOverlay"), $("receiptOverlay"), $("standbyOverlay"), $("reviewOverlay"), $("voiceConfirmOverlay"), $("variantPickerOverlay"), $("itemVariantsOverlay"), $("purchaseBillOverlay"), $("purchaseBillFormOverlay"), $("purchaseBillDetailOverlay"), $("pbPayOverlay"), $("stockLedgerOverlay"), $("stockLedgerDetailOverlay"), $("reportsHubOverlay"), $("salesReportOverlay"), $("productReportOverlay")].forEach(ov => {
+  [$("settingsOverlay"), $("historyOverlay"), $("paymentOverlay"), $("receiptOverlay"), $("standbyOverlay"), $("reviewOverlay"), $("voiceConfirmOverlay"), $("variantPickerOverlay"), $("itemVariantsOverlay"), $("purchaseBillOverlay"), $("purchaseBillFormOverlay"), $("purchaseBillDetailOverlay"), $("pbPayOverlay"), $("stockLedgerOverlay"), $("stockLedgerDetailOverlay"), $("reportsHubOverlay"), $("salesReportOverlay"), $("productReportOverlay"), $("dailyActivityOverlay")].forEach(ov => {
     ov.addEventListener("click", (e)=>{ if(e.target === ov) ov.classList.remove("show"); });
   });
 
