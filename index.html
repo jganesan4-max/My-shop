@@ -542,6 +542,9 @@
     <div class="field-label">கடை மொபைல் நம்பர் (பில்-ல் காட்ட)</div>
     <input type="text" id="shopPhoneInput" placeholder="எ.கா. 9876543210" inputmode="tel" maxlength="15">
 
+    <div class="field-label">கடை முகவரி (பில்-ல் காட்ட — விருப்பம்)</div>
+    <input type="text" id="shopAddressInput" placeholder="எ.கா. 12, காந்தி தெரு, சேலம்">
+
     <div class="field-label">GSTIN (GST பில் போட வேண்டுமெனில் மட்டும்)</div>
     <input type="text" id="shopGstinInput" placeholder="எ.கா. 33AAACH7409R1ZZ" maxlength="15" style="text-transform:uppercase;">
 
@@ -1174,6 +1177,7 @@
   const STORAGE_KEY_ITEMS = "kadai:items";
   const STORAGE_KEY_SHOPNAME = "kadai:shopname";
   const STORAGE_KEY_SHOPPHONE = "kadai:shopphone";
+  const STORAGE_KEY_SHOPADDRESS = "kadai:shopaddress";
   const STORAGE_KEY_SHOPGSTIN = "kadai:shopgstin";
   const STORAGE_KEY_SHOPGSTRATE = "kadai:shopgstrate";
   const STORAGE_KEY_STANDBY = "kadai:standby";
@@ -1287,6 +1291,7 @@
   let purchaseBills = [];
   let shopName = "என் கடை";
   let shopPhone = "";
+  let shopAddress = "";
   let shopGstin = "";
   let shopGstRate = 18;
   let recognition = null;
@@ -1320,6 +1325,9 @@
     try{
       shopPhone = localStorage.getItem(STORAGE_KEY_SHOPPHONE) || "";
     }catch(e){ shopPhone = ""; }
+    try{
+      shopAddress = localStorage.getItem(STORAGE_KEY_SHOPADDRESS) || "";
+    }catch(e){ shopAddress = ""; }
     try{
       shopGstin = localStorage.getItem(STORAGE_KEY_SHOPGSTIN) || "";
     }catch(e){ shopGstin = ""; }
@@ -1356,6 +1364,7 @@
     $("shopNameDisplay").textContent = shopName;
     $("shopNameInput").value = shopName;
     $("shopPhoneInput").value = shopPhone;
+    $("shopAddressInput").value = shopAddress;
     $("shopGstinInput").value = shopGstin;
     $("shopGstRateInput").value = String(shopGstRate);
     renderItems();
@@ -1372,6 +1381,9 @@
   }
   async function saveShopPhone(){
     try{ localStorage.setItem(STORAGE_KEY_SHOPPHONE, shopPhone); }catch(e){}
+  }
+  async function saveShopAddress(){
+    try{ localStorage.setItem(STORAGE_KEY_SHOPADDRESS, shopAddress); }catch(e){}
   }
   async function saveShopGstin(){
     try{ localStorage.setItem(STORAGE_KEY_SHOPGSTIN, shopGstin); }catch(e){}
@@ -1835,6 +1847,7 @@
     const entries = getLedgerEntriesSorted(name);
     let html = `<div class="pr-banner">
       <div class="pr-shopname">${escapeHtml(shopName)}</div>
+      ${shopAddress ? `<div class="pr-phone">${escapeHtml(shopAddress)}</div>` : ``}
       ${shopPhone ? `<div class="pr-phone">📞 ${escapeHtml(shopPhone)}</div>` : ``}
     </div>`;
     html += `<div class="pr-body">`;
@@ -3575,6 +3588,7 @@
     const methodLabel = receipt.method === "cash" ? "பணம் (Cash)" : (receipt.method === "bank" ? "வங்கி / UPI" : "கடன் (Credit)");
     let html = `<div class="pr-banner">
       <div class="pr-shopname">${escapeHtml(shopName)}</div>
+      ${shopAddress ? `<div class="pr-phone">${escapeHtml(shopAddress)}</div>` : ``}
       ${shopPhone ? `<div class="pr-phone">📞 ${escapeHtml(shopPhone)}</div>` : ``}
     </div>`;
     html += `<div class="pr-body">`;
@@ -3608,6 +3622,7 @@
     const methodLabel = receipt.method === "cash" ? "Cash" : "Bank / UPI";
     let lines = [];
     lines.push(shopName);
+    if(shopAddress) lines.push(shopAddress);
     if(shopPhone) lines.push("📞 " + shopPhone);
     lines.push("பில் எண் #" + receipt.billNo + " - " + receipt.time);
     lines.push("-----------------------------");
@@ -3679,7 +3694,7 @@
     const measure = document.createElement("canvas").getContext("2d");
     const lineH = 30, smallLineH = 25;
     const bannerPad = 16;
-    const bannerHeight = bannerPad*2 + 32 + (shopPhone ? 22 : 0);
+    const bannerHeight = bannerPad*2 + 32 + (shopAddress ? 20 : 0) + (shopPhone ? 22 : 0);
     let y = bannerHeight + 14;
     y += smallLineH; // bill meta
     y += 16; // dashed line + gap
@@ -3721,6 +3736,11 @@
     ctx.font = "800 24px 'Baloo Thambi 2', 'Noto Sans Tamil', sans-serif";
     ctx.fillText(shopName, W/2, by);
     by += 32;
+    if(shopAddress){
+      ctx.font = "14px 'Noto Sans Tamil', sans-serif";
+      ctx.fillText(shopAddress, W/2, by);
+      by += 20;
+    }
     if(shopPhone){
       ctx.font = "16px 'Noto Sans Tamil', sans-serif";
       ctx.fillText("📞 " + shopPhone, W/2, by);
@@ -4159,6 +4179,10 @@
   $("shopPhoneInput").addEventListener("change", () => {
     shopPhone = $("shopPhoneInput").value.trim();
     saveShopPhone();
+  });
+  $("shopAddressInput").addEventListener("change", () => {
+    shopAddress = $("shopAddressInput").value.trim();
+    saveShopAddress();
   });
   $("shopGstinInput").addEventListener("change", () => {
     shopGstin = $("shopGstinInput").value.trim().toUpperCase();
