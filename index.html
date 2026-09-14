@@ -488,6 +488,11 @@
     <button id="trialWarningClose" title="மூடு">✕</button>
   </div>
 
+  <div class="trial-warning-bar" id="storageWarningBar" style="display:none;">
+    <span id="storageWarningText"></span>
+    <button id="storageWarningClose" title="மூடு">✕</button>
+  </div>
+
   <div class="mic-wrap">
     <button class="mic-btn" id="micBtn">🎙️</button>
     <div class="mic-hint" id="micHint">மைக் ஆன் / ஆஃப் செய்ய தட்டவும்</div>
@@ -564,6 +569,9 @@
     <div class="divider-note">💡 ஒரு பொருளுக்கு "இருப்பு" எண்ணை நிரப்பினால் (அல்லது 📦 கொள்முதல் பில்-ல் அந்த பொருள் பெயரை சேர்த்தால்), விற்கும்போது தானாக இருப்பு குறையும். இங்கு ஒவ்வொரு பொருளின் தற்போதைய இருப்பு நிலையையும், எப்போது எவ்வளவு வந்தது/போனது என்ற முழு வரலாற்றையும் பார்க்கலாம்.</div>
 
     <div class="divider-note">💡 பொருள் பெயரை மைக் பட்டன் மூலம் பேசி நிரப்பலாம். விலையை மட்டும் தட்டச்சு செய்யவும்.</div>
+
+    <div class="field-label" style="margin-top:20px;">📦 App Storage பயன்பாடு</div>
+    <div class="divider-note" id="storageUsageDisplay" style="margin-top:0;">கணக்கிடப்படுகிறது...</div>
 
     <div class="field-label" style="margin-top:22px;">💾 Backup / Restore</div>
     <div style="display:flex;gap:10px;">
@@ -935,6 +943,21 @@
       <span class="amt" id="daSupplierTotal">₹0</span>
     </div>
     <div id="daSupplierList"></div>
+
+    <div class="field-label" style="margin-top:18px;display:flex;justify-content:space-between;">
+      <span>📊 இருப்பு மாற்றங்கள் (Stock In/Out)</span>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:6px;">
+      <div class="balance-panel" style="flex:1;padding:12px;">
+        <div class="balance-label" style="font-size:13px;">சேர்க்கை (IN)</div>
+        <div class="balance-amount give" id="daStockInTotal" style="font-size:22px;">0</div>
+      </div>
+      <div class="balance-panel" style="flex:1;padding:12px;">
+        <div class="balance-label" style="font-size:13px;">குறைப்பு (OUT)</div>
+        <div class="balance-amount short" id="daStockOutTotal" style="font-size:22px;">0</div>
+      </div>
+    </div>
+    <div id="daStockList" style="margin-top:8px;"></div>
   </div>
 </div>
 
@@ -1342,7 +1365,7 @@
   }
 
   async function saveItems(){
-    try{ localStorage.setItem(STORAGE_KEY_ITEMS, JSON.stringify(items)); }catch(e){}
+    safeLocalStorageSet(STORAGE_KEY_ITEMS, JSON.stringify(items));
   }
   async function saveShopName(){
     try{ localStorage.setItem(STORAGE_KEY_SHOPNAME, shopName); }catch(e){}
@@ -1366,7 +1389,7 @@
   // always credit-total minus payment-total, computed fresh so it can never
   // drift out of sync.
   function saveLedger(){
-    try{ localStorage.setItem(STORAGE_KEY_LEDGER, JSON.stringify(ledger)); }catch(e){}
+    safeLocalStorageSet(STORAGE_KEY_LEDGER, JSON.stringify(ledger));
   }
   function addLedgerCredit(name, amount, billNo){
     if(!name) return;
@@ -1437,7 +1460,7 @@
   // the shop owner has chosen to track. An item with stock === undefined
   // is simply not tracked — nothing here touches it.
   function saveStockLedger(){
-    try{ localStorage.setItem(STORAGE_KEY_STOCKLEDGER, JSON.stringify(stockLedger)); }catch(e){}
+    safeLocalStorageSet(STORAGE_KEY_STOCKLEDGER, JSON.stringify(stockLedger));
   }
   function addStockLedgerEntry(itemId, type, qty, note){
     if(!stockLedger[itemId]) stockLedger[itemId] = [];
@@ -2683,15 +2706,53 @@
       const lower = transcript.toLowerCase();
       const hit = BALANCE_QUERY_KEYWORDS.find(k => lower.includes(k.toLowerCase()));
       if(!hit) return false;
+      const isSupplierQuery = lower.includes("கொள்முதல்") || lower.includes("supplier") || lower.includes("purchase");
       let namePart = transcript;
       BALANCE_QUERY_KEYWORDS.forEach(k => { namePart = namePart.replace(new RegExp(k, "gi"), " "); });
       BALANCE_QUERY_FILLER.forEach(w => { namePart = namePart.replace(new RegExp(w, "gi"), " "); });
+      namePart = namePart.replace(/கொள்முதல்/gi, " ").replace(/supplier/gi, " ").replace(/purchase/gi, " ");
       namePart = namePart.replace(/\s+/g, " ").trim();
       if(!namePart){
-        setStatus("யாருடைய நிலுவை என்று பெயர் சொல்லவும்");
-        speak("யாருடைய நிலுவை என்று பெயர் சொல்லவும்");
+        const who = isSupplierQuery ? "எந்த வியாபாரி" : "யாருடைய";
+        setStatus(who + " நிலுவை என்று பெயர் சொல்லவும்");
+        speak(who + " நிலுவை என்று பெயர் சொல்லவும்");
         return true;
       }
+
+      if(isSupplierQuery){
+        // ---- Supplier / Purchase Bill balance ----
+        const traderNames = [...new Set(purchaseBills.map(pb => pb.traderName).filter(Boolean))];
+        const target = namePart.toLowerCase();
+        let match = traderNames.find(n => n.toLowerCase() === target);
+        if(!match) match = traderNames.find(n => n.toLowerCase().includes(target) || target.includes(n.toLowerCase()));
+        if(!match) match = phoneticNameMatch(namePart, traderNames);
+        if(!match){
+          setStatus('"' + namePart + '" கொள்முதல் பட்டியலில் இல்லை');
+          speak(namePart + " கொள்முதல் பட்டியலில் இல்லை");
+          return true;
+        }
+        const traderBills = purchaseBills.filter(pb => pb.traderName === match);
+        const totalPayable = traderBills.reduce((s,pb) => s + purchaseBillBalance(pb), 0);
+        const msg = totalPayable > 0.001
+          ? match + "-க்கு செலுத்த வேண்டிய நிலுவை ரூபாய் " + totalPayable.toFixed(0)
+          : match + "-க்கு நிலுவை இல்லை";
+        setStatus(msg);
+        speak(msg);
+        // Take them straight to where they can act on it: one unpaid
+        // bill → its detail page (has "add payment" right there);
+        // several → the Purchase Bill list filtered to just this trader.
+        const unpaidBills = traderBills.filter(pb => purchaseBillBalance(pb) > 0.001);
+        cameFromReportsHub = false;
+        if(unpaidBills.length === 1){
+          openPurchaseBillDetail(unpaidBills[0].id);
+        } else {
+          renderPurchaseBillList(match);
+          $("purchaseBillOverlay").classList.add("show");
+        }
+        return true;
+      }
+
+      // ---- Credit customer balance (existing behaviour) ----
       const names = Object.keys(ledger);
       const target = namePart.toLowerCase();
       // 1. Exact / substring match (handles same-script or already-typed names).
@@ -2719,6 +2780,9 @@
         : (bal < -0.001 ? match + "-க்கு நாம கொடுக்க வேண்டியது ரூபாய் " + Math.abs(bal).toFixed(0) : match + "-ன் நிலுவை இல்லை");
       setStatus(msg);
       speak(msg);
+      // Take them straight to that customer's page so they can record a
+      // payment right there, same as the supplier case above.
+      openLedgerDetail(match);
       return true;
     }catch(e){
       // Never let an unexpected input silently break the voice pipeline —
@@ -3418,7 +3482,7 @@
       billNo = dayList.length + 1;
       dayList.push({ billNo, time, total, method, received, balance, customerName: customerName || null, items: itemsSnapshot, gst });
     }
-    try{ localStorage.setItem(key, JSON.stringify(dayList)); }catch(e){}
+    safeLocalStorageSet(key, JSON.stringify(dayList));
 
     // Deduct stock for whatever's newly sold, and add back stock for
     // anything an edit removed — see applyStockForBill for how the two
@@ -3797,6 +3861,14 @@
     $("syncSection").style.display = "none";
     $("toggleSyncSection").textContent = "🌐 Cloud Settings (பல Device ரிப்போர்ட்) — காட்ட தட்டவும்";
     renderAutoBackupStatus();
+    (function(){
+      const bytes = getKadaiStorageBytes();
+      const mb = (bytes/(1024*1024)).toFixed(2);
+      const pct = Math.min(100, Math.round((bytes/(5*1024*1024))*100));
+      const el = $("storageUsageDisplay");
+      el.textContent = "தற்போது சுமார் " + mb + " MB பயன்படுத்தப்பட்டுள்ளது (Phone-ன் Limit-ல் சுமார் " + pct + "%).";
+      if(pct >= 80) el.style.color = "var(--danger)";
+    })();
     $("settingsOverlay").classList.add("show");
     prefetchFirebase();
   });
@@ -4636,7 +4708,26 @@
     });
     const supplierTotal = supplierPayments.reduce((s,p)=>s+p.amount,0);
 
-    return { sales, salesTotal, purchases, purchaseTotal, creditPayments, creditTotal, supplierPayments, supplierTotal };
+    // Stock movements: every stockLedger entry (across all items and
+    // variants) dated this day — same source the Stock Book screen uses,
+    // just filtered down to one date and pulled together across items.
+    const stockMoves = [];
+    Object.keys(stockLedger).forEach(key => {
+      (stockLedger[key]||[]).forEach(e => {
+        if(e.date !== dateStr) return;
+        const sepIdx = key.indexOf("::");
+        const itemId = sepIdx === -1 ? key : key.slice(0, sepIdx);
+        const variantLabel = sepIdx === -1 ? null : key.slice(sepIdx + 2);
+        const it = items.find(i => i.id === itemId);
+        let name = it ? it.name : "?";
+        if(variantLabel) name += " — " + variantLabel;
+        stockMoves.push({ name, type: e.type, qty: e.qty, note: e.note });
+      });
+    });
+    const stockInTotal = stockMoves.filter(m => m.type !== "sale").reduce((s,m)=>s+m.qty,0);
+    const stockOutTotal = stockMoves.filter(m => m.type === "sale").reduce((s,m)=>s+m.qty,0);
+
+    return { sales, salesTotal, purchases, purchaseTotal, creditPayments, creditTotal, supplierPayments, supplierTotal, stockMoves, stockInTotal, stockOutTotal };
   }
   function renderDailyActivity(){
     const dateStr = $("daDateInput").value;
@@ -4662,6 +4753,18 @@
     $("daSupplierList").innerHTML = a.supplierPayments.length
       ? a.supplierPayments.map(p => `<div class="history-row"><span>${escapeHtml(p.trader||"")} <span class="pay-tag">Invoice: ${escapeHtml(p.invoiceNo||"-")}</span></span><span>₹${p.amount.toFixed(0)}</span></div>`).join("")
       : '<div class="divider-note" style="margin-top:0;">இன்று வியாபாரிகளுக்கு பணம் செலுத்தவில்லை</div>';
+
+    $("daStockInTotal").textContent = formatStock(a.stockInTotal);
+    $("daStockOutTotal").textContent = formatStock(a.stockOutTotal);
+    $("daStockList").innerHTML = a.stockMoves.length
+      ? a.stockMoves.map(m => `<div class="stock-move-row ${stockMoveClass(m.type)}">
+          <div class="smr-info">
+            <span>${escapeHtml(m.name)}</span>
+            <span class="smr-note">${stockMoveLabel(m.type)}${m.note ? " · " + escapeHtml(m.note) : ""}</span>
+          </div>
+          <span class="smr-qty">${stockMoveSign(m.type)}${formatStock(m.qty)}</span>
+        </div>`).join("")
+      : '<div class="divider-note" style="margin-top:0;">இன்று இருப்பு மாற்றம் எதுவும் இல்லை</div>';
   }
   function openDailyActivity(){
     if(!$("daDateInput").value) $("daDateInput").value = todayDateOnly();
@@ -4890,7 +4993,7 @@
   // Date, Stock Name/Qty/Rate/Amount, Bill Total, Cash/UPI/Credit, Paid
   // amount + date, Balance to pay). Independent of the sales-side Ledger.
   function savePurchaseBills(){
-    try{ localStorage.setItem(STORAGE_KEY_PURCHASE_BILLS, JSON.stringify(purchaseBills)); }catch(e){}
+    safeLocalStorageSet(STORAGE_KEY_PURCHASE_BILLS, JSON.stringify(purchaseBills));
   }
   function purchaseBillPaid(pb){
     return (pb.payments || []).reduce((s,p) => s + (parseFloat(p.amount) || 0), 0);
@@ -4913,14 +5016,21 @@
     return m === "upi" ? "UPI" : (m === "credit" ? "Credit (பின்னால்)" : "Cash");
   }
 
-  function renderPurchaseBillList(){
+  function renderPurchaseBillList(filterTrader){
     const listEl = $("purchaseBillList");
+    const source = filterTrader ? purchaseBills.filter(pb => pb.traderName === filterTrader) : purchaseBills;
     if(purchaseBills.length === 0){
       listEl.innerHTML = '<div class="standby-empty">இன்னும் கொள்முதல் பில் எதுவும் பதிவு செய்யவில்லை</div>';
       $("purchaseBillTotalDue").textContent = "";
       return;
     }
-    const sorted = purchaseBills.slice().sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+    if(filterTrader && source.length === 0){
+      listEl.innerHTML = '<div class="standby-empty">"' + escapeHtml(filterTrader) + '"-க்கு பில் இல்லை</div>';
+      $("purchaseBillTotalDue").innerHTML = '<a href="javascript:void(0)" id="pbClearFilterLink" style="color:var(--gold);text-decoration:underline;font-size:15px;">✕ Filter நீக்கு — எல்லா பில்களும் காட்ட</a>';
+      $("pbClearFilterLink").addEventListener("click", () => renderPurchaseBillList());
+      return;
+    }
+    const sorted = source.slice().sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
     listEl.innerHTML = sorted.map(pb => {
       const bal = purchaseBillBalance(pb);
       const paid = purchaseBillPaid(pb);
@@ -4938,10 +5048,17 @@
         </div>
       </div>`;
     }).join("");
-    const totalDue = purchaseBills.reduce((s,pb) => s + purchaseBillBalance(pb), 0);
-    $("purchaseBillTotalDue").textContent = totalDue > 0.001
-      ? "மொத்த நிலுவை (வியாபாரிகளுக்கு செலுத்த வேண்டியது): ₹" + totalDue.toFixed(0)
-      : "எல்லா கொள்முதல் பில்களும் செலுத்தப்பட்டுவிட்டன 🎉";
+    if(filterTrader){
+      const filterTotal = source.reduce((s,pb) => s + purchaseBillBalance(pb), 0);
+      $("purchaseBillTotalDue").innerHTML = '"' + escapeHtml(filterTrader) + '" நிலுவை: ₹' + filterTotal.toFixed(0) +
+        ' &nbsp; <a href="javascript:void(0)" id="pbClearFilterLink" style="color:var(--gold);text-decoration:underline;font-size:14px;">✕ Filter நீக்கு</a>';
+      $("pbClearFilterLink").addEventListener("click", () => renderPurchaseBillList());
+    } else {
+      const totalDue = purchaseBills.reduce((s,pb) => s + purchaseBillBalance(pb), 0);
+      $("purchaseBillTotalDue").textContent = totalDue > 0.001
+        ? "மொத்த நிலுவை (வியாபாரிகளுக்கு செலுத்த வேண்டியது): ₹" + totalDue.toFixed(0)
+        : "எல்லா கொள்முதல் பில்களும் செலுத்தப்பட்டுவிட்டன 🎉";
+    }
     listEl.querySelectorAll(".pb-row").forEach(row => {
       row.addEventListener("click", () => openPurchaseBillDetail(row.dataset.id));
     });
@@ -5718,6 +5835,56 @@
     $("trialWarningBar").style.display = "none";
   });
 
+  // ---- Storage capacity: browsers cap localStorage (typically 5–10MB
+  // per site). Everything the app saves lives there, and it grows
+  // forever by default (no automatic deletion of old bills). Two
+  // separate protections:
+  // 1. A proactive warning once usage crosses 80% of a conservative
+  //    5MB assumption — gives plenty of notice before it's a problem.
+  // 2. safeLocalStorageSet() below actually catches a save that fails
+  //    outright (storage completely full) and alerts immediately,
+  //    instead of the previous silent try/catch that swallowed it.
+  const STORAGE_WARN_THRESHOLD_BYTES = 4 * 1024 * 1024; // 80% of 5MB
+  function getKadaiStorageBytes(){
+    let total = 0;
+    try{
+      for(let i=0;i<localStorage.length;i++){
+        const k = localStorage.key(i);
+        if(k && k.indexOf("kadai:") === 0){
+          total += k.length + (localStorage.getItem(k)||"").length;
+        }
+      }
+    }catch(e){}
+    return total;
+  }
+  function checkStorageUsage(){
+    try{
+      if(localStorage.getItem("kadai:storagewarn_dismissed") === todayDateOnly()) return; // dismissed already today
+      const bytes = getKadaiStorageBytes();
+      if(bytes < STORAGE_WARN_THRESHOLD_BYTES) return;
+      const mb = (bytes/(1024*1024)).toFixed(1);
+      $("storageWarningText").textContent = "⚠️ App Storage சுமார் " + mb + " MB பயன்படுத்தப்பட்டுள்ளது — Phone-ன் Storage Limit-ஐ நெருங்குகிறது. உடனே ☁️ Cloud Backup எடுத்துவையுங்கள்.";
+      $("storageWarningBar").style.display = "flex";
+    }catch(e){}
+  }
+  $("storageWarningClose").addEventListener("click", () => {
+    $("storageWarningBar").style.display = "none";
+    try{ localStorage.setItem("kadai:storagewarn_dismissed", todayDateOnly()); }catch(e){}
+  });
+  // Use this instead of a bare localStorage.setItem(...) wherever losing
+  // the save silently would be a real problem (today's bill, a purchase
+  // bill, a ledger entry). Returns true/false so the caller can decide
+  // whether to also retry or block the action.
+  function safeLocalStorageSet(key, value){
+    try{
+      localStorage.setItem(key, value);
+      return true;
+    }catch(e){
+      alert("⚠️ Storage நிறைந்துவிட்டது! இந்த தகவலை Save செய்ய முடியவில்லை.\n\nஉடனே Settings-க்குச் சென்று ☁️ Cloud Backup எடுத்துவிட்டு, பழைய Data-வை Clear செய்யவும்.");
+      return false;
+    }
+  }
+
   function getOrCreateDeviceId(){
     let id = null;
     try{ id = localStorage.getItem(STORAGE_KEY_DEVICEID); }catch(e){}
@@ -5801,6 +5968,7 @@
     // if no Sync Code is set.
     checkAutoBackupDue();
     checkTrialWarning();
+    checkStorageUsage();
     pingUsage();
   }
 })();
