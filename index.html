@@ -4318,17 +4318,12 @@
       <div class="existing-item-row">
         <div class="info">${escapeHtml(it.name)} — <b>₹${it.price}</b>${stockText}${it.variants && it.variants.length > 0 ? ` <span style="color:var(--gold);font-size:13px;">(${it.variants.length} விருப்பங்கள்)</span>` : ``}</div>
         <div class="row-actions">
-          <button class="mini-btn stock-btn" data-id="${it.id}" title="இருப்பு சேர்">📦</button>
           <button class="mini-btn variants-btn" data-id="${it.id}" title="விருப்பங்கள்">📋</button>
           <button class="mini-btn edit-btn" data-id="${it.id}">✏️</button>
           <button class="mini-btn del-btn" data-id="${it.id}">🗑️</button>
         </div>
       </div>`;
     }).join("");
-
-    list.querySelectorAll(".stock-btn").forEach(btn=>{
-      btn.addEventListener("click", ()=> promptRestock(btn.dataset.id));
-    });
 
     list.querySelectorAll(".variants-btn").forEach(btn=>{
       btn.addEventListener("click", ()=> openItemVariants(btn.dataset.id));
@@ -4392,24 +4387,6 @@
   // Quick "add purchased stock" action from the Settings item row (📦).
   // Uses the browser's native prompt(), matching the pattern already used
   // for editing a bill row's quantity elsewhere in this app.
-  function promptRestock(itemId){
-    const it = items.find(i=>i.id===itemId);
-    if(!it) return;
-    const input = prompt("சேர்க்க வேண்டிய இருப்பு எண்ணிக்கை — " + it.name, "");
-    if(input === null) return;
-    const qty = parseFloat(input);
-    if(isNaN(qty) || qty <= 0){
-      setStatus("சரியான எண்ணிக்கை இடவும்");
-      return;
-    }
-    it.stock = roundStock((typeof it.stock === "number" ? it.stock : 0) + qty);
-    saveItems();
-    addStockLedgerEntry(itemId, "purchase", qty, "இருப்பு சேர்க்கப்பட்டது");
-    renderExistingItems();
-    renderItems();
-    setStatus(it.name + " இருப்பில் " + qty + " சேர்க்கப்பட்டது. புதிய இருப்பு: " + formatStock(it.stock));
-  }
-
   // ---- Item variants manager (Settings → 📋): lets the shop owner set up
   // weight/price options for one item once — e.g. மஞ்சள்தூள் 25gm-₹15,
   // 50gm-₹30, 100gm-₹55, 250gm-₹140 — matching how many packet goods are
@@ -4441,14 +4418,10 @@
       return `<div class="existing-item-row">
         <div class="info">${escapeHtml(v.label)} — <b>₹${v.price}</b>${stockText}</div>
         <div class="row-actions">
-          <button class="mini-btn restock-variant-btn" data-idx="${idx}" title="இருப்பு சேர்">📦</button>
           <button class="mini-btn del-btn" data-idx="${idx}">🗑️</button>
         </div>
       </div>`;
     }).join("");
-    listEl.querySelectorAll(".restock-variant-btn").forEach(btn=>{
-      btn.addEventListener("click", ()=> promptRestockVariant(itemVariantsCurrentId, parseInt(btn.dataset.idx)));
-    });
     listEl.querySelectorAll(".del-btn").forEach(btn=>{
       btn.addEventListener("click", async ()=>{
         const item = items.find(i=>i.id===itemVariantsCurrentId);
@@ -4460,26 +4433,6 @@
         renderExistingItems();
       });
     });
-  }
-
-  function promptRestockVariant(itemId, variantIdx){
-    const it = items.find(i=>i.id===itemId);
-    const v = it && it.variants && it.variants[variantIdx];
-    if(!v) return;
-    const label = it.name + " — " + v.label;
-    const input = prompt("சேர்க்க வேண்டிய இருப்பு எண்ணிக்கை — " + label, "");
-    if(input === null) return;
-    const qty = parseFloat(input);
-    if(isNaN(qty) || qty <= 0){
-      setStatus("சரியான எண்ணிக்கை இடவும்");
-      return;
-    }
-    v.stock = roundStock((typeof v.stock === "number" ? v.stock : 0) + qty);
-    saveItems();
-    addStockLedgerEntry(stockKey(itemId, v.label), "purchase", qty, "இருப்பு சேர்க்கப்பட்டது");
-    renderItemVariantsList();
-    renderItems();
-    setStatus(label + " இருப்பில் " + qty + " சேர்க்கப்பட்டது. புதிய இருப்பு: " + formatStock(v.stock));
   }
 
   $("addVariantBtn").addEventListener("click", async ()=>{
