@@ -588,6 +588,20 @@
     <input type="text" id="securityPinInput" placeholder="எ.கா. 1234" inputmode="numeric" maxlength="8">
     <div class="divider-note">💡 இதை அமைத்தால், "கடன் கணக்கு"-ல் ஒரு வாடிக்கையாளரிடம் இருந்து பணம் பெற்றதை பதிவு செய்யும் முன் இந்த PIN-ஐ கேட்கும் — பணியாளர்கள் தவறாக/தானாக பணம் பெற்றதாக பதிவு செய்வதை தடுக்க. காலியாக விட்டால், வெறும் உறுதிப்படுத்தல் (Confirm) மட்டும் போதும்.</div>
 
+    <div class="field-label" style="margin-top:22px;">இந்த Device எப்படி பயன்படுத்தப்படுகிறது?</div>
+    <div class="pay-method-row">
+      <button type="button" class="pay-method-btn active" id="roleOwnerBtn" data-role="owner"><span class="emoji">🧑‍💼</span>உரிமையாளர்</button>
+      <button type="button" class="pay-method-btn" id="roleStaffBtn" data-role="staff"><span class="emoji">🧑‍🔧</span>விற்பனையாளர்</button>
+    </div>
+    <div id="staffPermissionsSection">
+      <div class="field-label" style="margin-top:12px;">விற்பனையாளர் (Sales Manager) என்ன பார்க்கலாம்? — Sync Code மூலம் மற்ற Device-க்கும் இது பரவும்</div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:15px;"><input type="checkbox" id="permSettings" checked> ⚙️ Settings (பொருள் திருத்த, கடை விவரம்)</label>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:15px;"><input type="checkbox" id="permLedger" checked> 💰 கடன் கணக்கு (Credit Ledger)</label>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:15px;"><input type="checkbox" id="permPurchase" checked> 📦 கொள்முதல் பில் (Purchase Bills)</label>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:15px;"><input type="checkbox" id="permReports" checked> 📊 அறிக்கைகள் (Reports)</label>
+    </div>
+    <div class="divider-note" id="staffModeNote" style="display:none;">💡 இது தற்போது Sales Manager Device — Owner அனுமதிக்காத பட்டன்கள் மறைக்கப்பட்டுள்ளன. கவனம்: இது ஒரு எளிய (soft) கட்டுப்பாடு மட்டுமே — யார் வேண்டுமானாலும் மேலே "உரிமையாளர்" தட்டி மீண்டும் முழு அணுகல் பெறலாம். முழுமையான பாதுகாப்பு தேவைப்பட்டால் தெரிவிக்கவும்.</div>
+
     <div class="field-label" style="margin-top:22px;">
       <a href="javascript:void(0)" id="toggleSyncSection" style="color:var(--chalk-dim);text-decoration:underline;font-size:13px;">🌐 Cloud Settings (பல Device ரிப்போர்ட்) — காட்ட தட்டவும்</a>
     </div>
@@ -1292,6 +1306,16 @@
   let shopName = "என் கடை";
   let shopPhone = "";
   let shopAddress = "";
+  // Deliberately NOT prefixed "kadai:" — this must never travel through
+  // Backup/Restore/Sync, since which role THIS specific device is logged
+  // in as is a per-device choice, not shop data. A sync/restore
+  // overwriting it would silently flip a staff phone back to Owner mode.
+  const DEVICE_ROLE_KEY = "kb_devicerole";
+  let deviceRole = "owner"; // "owner" | "staff"
+  // This ONE, in contrast, DOES use the "kadai:" prefix on purpose — the
+  // owner's chosen restrictions should reach every synced device.
+  const STORAGE_KEY_STAFF_PERMISSIONS = "kadai:staffpermissions";
+  let staffPermissions = { settings:true, ledger:true, purchaseBills:true, reports:true };
   let shopGstin = "";
   let shopGstRate = 18;
   let recognition = null;
@@ -1328,6 +1352,13 @@
     try{
       shopAddress = localStorage.getItem(STORAGE_KEY_SHOPADDRESS) || "";
     }catch(e){ shopAddress = ""; }
+    try{
+      deviceRole = localStorage.getItem(DEVICE_ROLE_KEY) || "owner";
+    }catch(e){ deviceRole = "owner"; }
+    try{
+      const rawPerms = localStorage.getItem(STORAGE_KEY_STAFF_PERMISSIONS);
+      staffPermissions = rawPerms ? JSON.parse(rawPerms) : { settings:true, ledger:true, purchaseBills:true, reports:true };
+    }catch(e){ staffPermissions = { settings:true, ledger:true, purchaseBills:true, reports:true }; }
     try{
       shopGstin = localStorage.getItem(STORAGE_KEY_SHOPGSTIN) || "";
     }catch(e){ shopGstin = ""; }
@@ -1367,6 +1398,11 @@
     $("shopAddressInput").value = shopAddress;
     $("shopGstinInput").value = shopGstin;
     $("shopGstRateInput").value = String(shopGstRate);
+    $("permSettings").checked = staffPermissions.settings;
+    $("permLedger").checked = staffPermissions.ledger;
+    $("permPurchase").checked = staffPermissions.purchaseBills;
+    $("permReports").checked = staffPermissions.reports;
+    applyRolePermissionsToUI();
     renderItems();
     updateStandbyBadge();
     updateLedgerBadge();
@@ -1385,6 +1421,39 @@
   async function saveShopAddress(){
     try{ localStorage.setItem(STORAGE_KEY_SHOPADDRESS, shopAddress); }catch(e){}
   }
+
+  // ---- Owner / Sales Manager role: hides whichever top-level screens
+  // the owner has restricted, when THIS device is set to Staff mode.
+  // This is a soft (UI-level) restriction, not real data security — any
+  // device can switch itself back to Owner mode at will. It's meant to
+  // keep a trusted staff member from wandering into Settings/Ledger/etc.
+  // during normal use, not to withstand someone deliberately bypassing it.
+  function applyRolePermissionsToUI(){
+    const isStaff = deviceRole === "staff";
+    $("settingsBtn").style.display = (isStaff && !staffPermissions.settings) ? "none" : "";
+    $("ledgerMainBtn").style.display = (isStaff && !staffPermissions.ledger) ? "none" : "";
+    $("purchaseBillBtn").style.display = (isStaff && !staffPermissions.purchaseBills) ? "none" : "";
+    $("historyBtn").style.display = (isStaff && !staffPermissions.reports) ? "none" : "";
+    $("staffPermissionsSection").style.display = isStaff ? "none" : "block";
+    $("staffModeNote").style.display = isStaff ? "block" : "none";
+    $("roleOwnerBtn").classList.toggle("active", !isStaff);
+    $("roleStaffBtn").classList.toggle("active", isStaff);
+  }
+  function setDeviceRole(role){
+    deviceRole = role;
+    try{ localStorage.setItem(DEVICE_ROLE_KEY, role); }catch(e){}
+    applyRolePermissionsToUI();
+  }
+  $("roleOwnerBtn").addEventListener("click", () => setDeviceRole("owner"));
+  $("roleStaffBtn").addEventListener("click", () => setDeviceRole("staff"));
+  function saveStaffPermissions(){
+    safeLocalStorageSet(STORAGE_KEY_STAFF_PERMISSIONS, JSON.stringify(staffPermissions));
+  }
+  $("permSettings").addEventListener("change", () => { staffPermissions.settings = $("permSettings").checked; saveStaffPermissions(); });
+  $("permLedger").addEventListener("change", () => { staffPermissions.ledger = $("permLedger").checked; saveStaffPermissions(); });
+  $("permPurchase").addEventListener("change", () => { staffPermissions.purchaseBills = $("permPurchase").checked; saveStaffPermissions(); });
+  $("permReports").addEventListener("change", () => { staffPermissions.reports = $("permReports").checked; saveStaffPermissions(); });
+
   async function saveShopGstin(){
     try{ localStorage.setItem(STORAGE_KEY_SHOPGSTIN, shopGstin); }catch(e){}
   }
