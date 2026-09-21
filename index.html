@@ -3478,7 +3478,7 @@
       existingIdx = dayList.findIndex(d => d.billNo === editRef.billNo);
     }
 
-    const itemsSnapshot = bill.map(b=>({itemId:b.itemId||null, name:b.name, qty:b.qty, price:b.price}));
+    const itemsSnapshot = bill.map(b=>({itemId:b.itemId||null, name:b.name, qty:b.qty, price:b.price, variantLabel:b.variantLabel||null}));
     const time = new Date().toLocaleTimeString("ta-IN",{hour:'2-digit',minute:'2-digit'});
     let isEdit = false;
 
